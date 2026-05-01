@@ -20,36 +20,6 @@ PRIORITY_SELECTORS = [
     "main",
 ]
 
-# CSS selectors per known roaster domain.  Each entry has:
-#   item   – selector for a product card element
-#   name   – selector for title within that card
-#   url    – selector for the <a> link within that card
-#   price  – selector for price within that card (optional, may be absent)
-ROASTER_SELECTORS: dict[str, dict[str, str]] = {
-    "onyxcoffeelab.com": {
-        "item": ".product-item",
-        "name": ".product-item__title",
-        "url": "a",
-        "price": ".product-item__price",
-    },
-    "bluebottlecoffee.com": {
-        "item": "[data-test='product-card']",
-        "name": "[data-test='product-name']",
-        "url": "a",
-        "price": "[data-test='product-price']",
-    },
-    "counterculturecoffee.com": {
-        "item": ".product-card",
-        "name": ".product-card__title",
-        "url": "a",
-        "price": ".product-card__price",
-    },
-}
-
-
-def _extract_domain(url: str) -> str:
-    host = urlparse(url).netloc.lower()
-    return host.lstrip("www.")
 
 
 def _parse_price(text: str | None) -> float | None:
@@ -89,13 +59,81 @@ async def scrape_page(url: str) -> str:
     return content[:12000]
 
 
+def _build_base_url(url: str) -> str:
+    parsed = urlparse(url)
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
+def _parse_shopify_products(products: list[dict], base_url: str) -> list[dict]:
+    results = []
+    for p in products:
+        handle = p.get("handle")
+        if not handle:
+            continue
+        prices = [v.get("price") for v in p.get("variants", []) if v.get("price")]
+        min_price = min((_parse_price(pr) for pr in prices if pr), default=None)
+        results.append({
+            "name": p.get("title", handle),
+            "url": f"{base_url}/products/{handle}",
+            "price_usd": min_price,
+        })
+    return results
+
+
+async def _try_shopify_json(client: httpx.AsyncClient, catalog_url: str) -> list[dict] | None:
+    """
+    Tries Shopify JSON endpoints. Returns parsed results or None if not a Shopify store.
+    Tries collection-scoped endpoint first (preserves catalog filter), then site-wide.
+    """
+    parsed = urlparse(catalog_url)
+    base_url = f"{parsed.scheme}://{parsed.netloc}"
+
+    # Collection-scoped: /collections/<name> → /collections/<name>/products.json
+    if "/collections/" in parsed.path:
+        collection_path = parsed.path.rstrip("/")
+        json_url = f"{base_url}{collection_path}/products.json?limit=250"
+        try:
+            resp = await client.get(json_url, headers={"User-Agent": USER_AGENT}, timeout=15, follow_redirects=True)
+            if resp.status_code == 200:
+                data = resp.json()
+                products = data.get("products", [])
+                if products:
+                    return _parse_shopify_products(products, base_url)
+        except Exception:
+            pass
+
+    # Site-wide: /products.json, filter to coffee product types
+    json_url = f"{base_url}/products.json?limit=250"
+    try:
+        resp = await client.get(json_url, headers={"User-Agent": USER_AGENT}, timeout=15, follow_redirects=True)
+        if resp.status_code == 200:
+            data = resp.json()
+            products = data.get("products")
+            if products is not None:
+                coffee_products = [
+                    p for p in products
+                    if "coffee" in p.get("product_type", "").lower()
+                    or "coffee" in " ".join(p.get("tags", [])).lower()
+                ]
+                if coffee_products:
+                    return _parse_shopify_products(coffee_products, base_url)
+    except Exception:
+        pass
+
+    return None
+
+
 async def scrape_roaster_catalog(catalog_url: str) -> list[dict]:
     """
     Scrapes a roaster's collection page.
     Returns list of dicts: {name, url, price_usd (or None)}.
-    Uses domain-specific selectors when available, falls back to generic <a href*=/products/>.
+    Tries Shopify JSON API first, then domain-specific CSS selectors, then generic link scraping.
     """
     async with httpx.AsyncClient() as client:
+        shopify_results = await _try_shopify_json(client, catalog_url)
+        if shopify_results is not None:
+            return shopify_results
+
         try:
             resp = await client.get(
                 catalog_url,
@@ -109,51 +147,19 @@ async def scrape_roaster_catalog(catalog_url: str) -> list[dict]:
             return []
 
     soup = BeautifulSoup(resp.text, "html.parser")
-    domain = _extract_domain(catalog_url)
-    selectors = ROASTER_SELECTORS.get(domain)
-
+    base = _build_base_url(catalog_url)
+    seen_urls: set[str] = set()
     results: list[dict] = []
 
-    if selectors:
-        for item in soup.select(selectors["item"]):
-            name_el = item.select_one(selectors["name"])
-            url_el = item.select_one(selectors["url"])
-            price_el = item.select_one(selectors.get("price", ""))
-
-            if not name_el or not url_el:
-                continue
-
-            href = url_el.get("href", "")
-            if href and not href.startswith("http"):
-                base = f"{urlparse(catalog_url).scheme}://{urlparse(catalog_url).netloc}"
-                href = base + href
-
-            results.append(
-                {
-                    "name": name_el.get_text(strip=True),
-                    "url": href,
-                    "price_usd": _parse_price(price_el.get_text(strip=True) if price_el else None),
-                }
-            )
-    else:
-        # Generic fallback: collect <a> links whose href contains /products/
-        seen_urls: set[str] = set()
-        for a in soup.find_all("a", href=True):
-            href: str = a["href"]
-            if "/products/" not in href:
-                continue
-            if not href.startswith("http"):
-                base = f"{urlparse(catalog_url).scheme}://{urlparse(catalog_url).netloc}"
-                href = base + href
-            if href in seen_urls:
-                continue
-            seen_urls.add(href)
-            results.append(
-                {
-                    "name": a.get_text(strip=True) or href,
-                    "url": href,
-                    "price_usd": None,
-                }
-            )
+    for a in soup.find_all("a", href=True):
+        href: str = a["href"]
+        if "/products/" not in href:
+            continue
+        if not href.startswith("http"):
+            href = base + href
+        if href in seen_urls:
+            continue
+        seen_urls.add(href)
+        results.append({"name": a.get_text(strip=True) or href, "url": href, "price_usd": None})
 
     return results
