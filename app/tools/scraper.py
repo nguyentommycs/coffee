@@ -21,7 +21,6 @@ PRIORITY_SELECTORS = [
 ]
 
 
-
 def _parse_price(text: str | None) -> float | None:
     if not text:
         return None
