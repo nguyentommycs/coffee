@@ -1,7 +1,7 @@
 import pytest
 import httpx
 from unittest.mock import AsyncMock, patch, MagicMock
-from app.tools.scraper import scrape_page, scrape_roaster_catalog, _extract_domain
+from app.tools.scraper import scrape_page, scrape_roaster_catalog
 
 SAMPLE_PRODUCT_HTML = """
 <html>
@@ -136,7 +136,3 @@ async def test_scrape_roaster_catalog_generic_fallback():
     # /about should be excluded
     assert all("/about" not in u for u in urls)
 
-
-def test_extract_domain():
-    assert _extract_domain("https://www.onyxcoffeelab.com/collections/coffee") == "onyxcoffeelab.com"
-    assert _extract_domain("https://bluebottlecoffee.com/us/eng") == "bluebottlecoffee.com"
