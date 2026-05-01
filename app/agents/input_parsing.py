@@ -167,6 +167,7 @@ def _build_profile(
     input_type: str,
     url: str | None,
     page_text: str,
+    user_score: int | None = None,
 ) -> BeanProfile:
     missing: list[str] = list(data.get("missing_fields") or [])
 
@@ -197,6 +198,7 @@ def _build_profile(
         variety=data.get("variety"),
         roast_level=roast_level,
         tasting_notes=data.get("tasting_notes") or [],
+        user_score=user_score,
         confidence=confidence,
         missing_fields=missing,
         input_raw=raw_input,
@@ -204,10 +206,11 @@ def _build_profile(
     )
 
 
-async def run(raw_input: str, user_id: str) -> BeanProfile:
+async def run(raw_input: str, user_id: str, user_score: int | None = None) -> BeanProfile:
     """
     Parse a single raw input string into a BeanProfile.
     Does not persist to DB — that is the orchestrator's job.
+    user_score is provided externally (e.g. a UI selector) and passed through unchanged.
     """
     input_type = detect_input_type(raw_input)
     last_profile: BeanProfile | None = None
@@ -231,7 +234,7 @@ async def run(raw_input: str, user_id: str) -> BeanProfile:
                 return last_profile
             raise
 
-        profile = _build_profile(data, user_id, raw_input, input_type, url, page_text)
+        profile = _build_profile(data, user_id, raw_input, input_type, url, page_text, user_score)
         last_profile = profile
 
         needs_retry = profile.confidence < 0.6 or len(profile.missing_fields) > 3
