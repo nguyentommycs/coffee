@@ -48,6 +48,7 @@ def _mock_response(html: str, status: int = 200) -> MagicMock:
     mock.text = html
     mock.status_code = status
     mock.raise_for_status = MagicMock()
+    mock.json.side_effect = ValueError("not JSON")
     return mock
 
 
