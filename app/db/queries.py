@@ -1,5 +1,8 @@
+import json
+
 from app.db.connection import get_pool
 from app.models.bean_profile import BeanProfile
+from app.models.recommendation import RecommendationCandidate
 from app.models.taste_profile import TasteProfile
 
 
@@ -100,4 +103,26 @@ async def upsert_taste_profile(profile: TasteProfile) -> None:
         profile.total_beans_logged,
         profile.profile_confidence,
         profile.updated_at,
+    )
+
+
+async def insert_recommendation_run(
+    user_id: str,
+    taste_profile: TasteProfile,
+    recommendations: list[RecommendationCandidate],
+    critic_notes: str,
+    trace: dict,
+) -> None:
+    pool = get_pool()
+    await pool.execute(
+        """
+        INSERT INTO recommendation_runs
+            (user_id, taste_profile_snapshot, recommendations, critic_notes, pipeline_trace)
+        VALUES ($1, $2::jsonb, $3::jsonb, $4, $5::jsonb)
+        """,
+        user_id,
+        json.dumps(taste_profile.model_dump(mode="json")),
+        json.dumps([r.model_dump(mode="json") for r in recommendations]),
+        critic_notes,
+        json.dumps(trace),
     )
