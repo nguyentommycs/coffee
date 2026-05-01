@@ -9,25 +9,24 @@ import logging
 import time
 from datetime import datetime, timezone
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 from app.config import settings
 from app.observability.llm_logger import LLMCallRecord
 
 logger = logging.getLogger(__name__)
 
-# Module-level model instance, initialised lazily.
-_model: genai.GenerativeModel | None = None
+_client: genai.Client | None = None
 
 
-def _get_model() -> genai.GenerativeModel:
-    global _model
-    if _model is None:
+def _get_client() -> genai.Client:
+    global _client
+    if _client is None:
         if not settings.google_api_key:
             raise RuntimeError("GOOGLE_API_KEY is not set")
-        genai.configure(api_key=settings.google_api_key)
-        _model = genai.GenerativeModel(settings.gemini_model)
-    return _model
+        _client = genai.Client(api_key=settings.google_api_key)
+    return _client
 
 
 async def llm_complete(prompt: str, span: str = "unknown") -> str:
@@ -38,10 +37,16 @@ async def llm_complete(prompt: str, span: str = "unknown") -> str:
     All agents expect plain JSON back — prompts should end with
     'Return only valid JSON. No preamble, no markdown fences.'
     """
-    model = _get_model()
+    client = _get_client()
     t0 = time.monotonic()
 
-    response = model.generate_content(prompt)
+    response = client.models.generate_content(
+        model=settings.gemini_model,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            thinking_config=types.ThinkingConfig(thinking_level="MINIMAL"),
+        ),
+    )
 
     latency_ms = (time.monotonic() - t0) * 1000
     text = response.text.strip()

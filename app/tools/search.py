@@ -37,7 +37,6 @@ async def web_search(query: str, n_results: int = 5) -> list[SearchResult]:
             BRAVE_SEARCH_URL,
             headers={
                 "Accept": "application/json",
-                "Accept-Encoding": "gzip",
                 "X-Subscription-Token": settings.brave_api_key,
             },
             params={"q": query, "count": n_results * 2},
