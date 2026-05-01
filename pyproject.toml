@@ -12,7 +12,7 @@ dependencies = [
     "uvicorn[standard]",
     "httpx",
     "beautifulsoup4",
-    "anthropic",
+    "google-generativeai>=0.8",
     "asyncpg",
     "python-dotenv",
 ]
@@ -22,3 +22,6 @@ dev = [
     "pytest",
     "pytest-asyncio",
 ]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
