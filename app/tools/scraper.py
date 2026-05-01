@@ -20,16 +20,6 @@ PRIORITY_SELECTORS = [
     "main",
 ]
 
-# Domain-specific CSS selectors for catalog pages: {item, name, price (optional)}
-ROASTER_SELECTORS: dict[str, dict[str, str]] = {
-    "onyxcoffeelab.com": {
-        "item": ".product-item",
-        "name": ".product-item__title",
-        "price": ".product-item__price",
-    },
-}
-
-
 
 def _parse_price(text: str | None) -> float | None:
     if not text:
@@ -157,40 +147,18 @@ async def scrape_roaster_catalog(catalog_url: str) -> list[dict]:
 
     soup = BeautifulSoup(resp.text, "html.parser")
     base = _build_base_url(catalog_url)
-    parsed_domain = urlparse(catalog_url).netloc.removeprefix("www.")
-    selectors = ROASTER_SELECTORS.get(parsed_domain)
+    seen_urls: set[str] = set()
+    results: list[dict] = []
 
-    if selectors:
-        seen_urls: set[str] = set()
-        results: list[dict] = []
-        for item in soup.select(selectors["item"]):
-            a = item.find("a", href=True)
-            if not a:
-                continue
-            href: str = a["href"]
-            if not href.startswith("http"):
-                href = base + href
-            if href in seen_urls:
-                continue
-            seen_urls.add(href)
-            name_el = item.select_one(selectors["name"])
-            name = name_el.get_text(strip=True) if name_el else a.get_text(strip=True)
-            price_selector = selectors.get("price")
-            price_el = item.select_one(price_selector) if price_selector else None
-            price_usd = _parse_price(price_el.get_text(strip=True)) if price_el else None
-            results.append({"name": name, "url": href, "price_usd": price_usd})
-        return results
-
-    seen_urls2: set[str] = set()
-    results2: list[dict] = []
     for a in soup.find_all("a", href=True):
-        href = a["href"]
+        href: str = a["href"]
         if "/products/" not in href:
             continue
         if not href.startswith("http"):
             href = base + href
-        if href in seen_urls2:
+        if href in seen_urls:
             continue
-        seen_urls2.add(href)
-        results2.append({"name": a.get_text(strip=True) or href, "url": href, "price_usd": None})
-    return results2
+        seen_urls.add(href)
+        results.append({"name": a.get_text(strip=True) or href, "url": href, "price_usd": None})
+
+    return results

@@ -21,19 +21,6 @@ SAMPLE_PRODUCT_HTML = """
 </html>
 """
 
-SAMPLE_CATALOG_HTML = """
-<html><body>
-  <div class="product-item">
-    <a href="/products/geometry"><span class="product-item__title">Geometry</span></a>
-    <span class="product-item__price">$19.00</span>
-  </div>
-  <div class="product-item">
-    <a href="/products/hologram"><span class="product-item__title">Hologram</span></a>
-    <span class="product-item__price">$21.00</span>
-  </div>
-</body></html>
-"""
-
 SAMPLE_GENERIC_CATALOG_HTML = """
 <html><body>
   <a href="/products/ethiopian-blend">Ethiopian Blend</a>
@@ -102,22 +89,6 @@ async def test_scrape_page_returns_empty_on_http_error():
         result = await scrape_page("https://example.com/product")
 
     assert result == ""
-
-
-@pytest.mark.asyncio
-async def test_scrape_roaster_catalog_known_domain():
-    with patch("httpx.AsyncClient") as mock_client_cls:
-        mock_client = AsyncMock()
-        mock_client_cls.return_value.__aenter__.return_value = mock_client
-        mock_client.get = AsyncMock(return_value=_mock_response(SAMPLE_CATALOG_HTML))
-
-        results = await scrape_roaster_catalog("https://onyxcoffeelab.com/collections/coffee")
-
-    assert len(results) == 2
-    names = [r["name"] for r in results]
-    assert "Geometry" in names
-    assert "Hologram" in names
-    assert results[0]["price_usd"] == pytest.approx(19.0)
 
 
 @pytest.mark.asyncio
