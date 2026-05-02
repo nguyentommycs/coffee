@@ -124,6 +124,20 @@ async def upsert_taste_profile(profile: TasteProfile) -> None:
     )
 
 
+async def get_recommendation_runs(user_id: str) -> list[dict]:
+    pool = get_pool()
+    rows = await pool.fetch(
+        """
+        SELECT id, created_at, critic_notes, recommendations, taste_profile_snapshot
+        FROM recommendation_runs
+        WHERE user_id = $1
+        ORDER BY created_at DESC
+        """,
+        user_id,
+    )
+    return [dict(row) for row in rows]
+
+
 async def insert_recommendation_run(
     user_id: str,
     taste_profile: TasteProfile,

@@ -57,10 +57,10 @@ async def run_recommendations(
     """
     all_profiles = await get_bean_profiles(user_id)
 
-    if len(all_profiles) < 2:
+    if len(all_profiles) < 3:
         raise ValueError(
             f"User {user_id!r} has {len(all_profiles)} bean(s) logged. "
-            "Log at least 2 beans before requesting recommendations."
+            "Log at least 3 beans before requesting recommendations."
         )
 
     trace = TraceLogger(pipeline_id=uuid4(), user_id=user_id)
