@@ -37,8 +37,7 @@ async def parse_and_persist(
 
     for raw in raw_inputs:
         try:
-            profile = await input_parsing.run(raw, user_id)
-            profile.user_score = user_score
+            profile = await input_parsing.run(raw, user_id, user_score=user_score)
             await upsert_bean_profile(profile)
             parsed.append(profile)
         except AgentLoopError as exc:
