@@ -12,14 +12,17 @@ Run with:
 
 Expected runtime: ~30–90s for test_full_pipeline_e2e (15–25 Gemini calls + web scraping).
 """
+import datetime
+
 import pytest
 
 from app.agents.orchestrator import parse_and_persist, run_recommendations
 from app.config import settings
 from app.db.connection import get_pool
-from app.db.queries import get_taste_profile
+from app.db.queries import get_recommendation_runs, get_taste_profile, insert_recommendation_run
 from app.models.bean_profile import BeanProfile
 from app.models.recommendation import RecommendationCandidate, RecommendationResponse
+from app.models.taste_profile import TasteProfile
 
 _no_gemini = not settings.google_api_key
 _no_brave = not settings.brave_api_key
@@ -107,11 +110,66 @@ async def test_full_pipeline_e2e(test_user: str):
 
 
 @pytest.mark.integration
+async def test_get_recommendation_runs(test_user: str):
+    """
+    get_recommendation_runs returns persisted runs with the documented shape.
+    """
+    taste_profile = TasteProfile(
+        user_id=test_user,
+        preferred_origins=["Ethiopia"],
+        preferred_processes=["Washed"],
+        preferred_roast_levels=["Light"],
+        flavor_affinities=["floral"],
+        avoided_flavors=[],
+        narrative_summary="Test profile summary",
+        total_beans_logged=3,
+        profile_confidence=0.8,
+        updated_at=datetime.datetime.now(datetime.timezone.utc),
+    )
+    candidate = RecommendationCandidate(
+        name="Test Bean",
+        roaster="Test Roaster",
+        product_url="https://example.com/bean",
+        origin_country="Ethiopia",
+        origin_region=None,
+        farm_or_cooperative=None,
+        process="Washed",
+        variety=None,
+        roast_level="Light",
+        tasting_notes=["floral", "jasmine"],
+        price_usd=18.0,
+        in_stock=True,
+        match_score=0.9,
+        match_rationale="Great match",
+    )
+    await insert_recommendation_run(
+        user_id=test_user,
+        taste_profile=taste_profile,
+        recommendations=[candidate],
+        critic_notes="Solid picks.",
+        trace={},
+    )
+
+    runs = await get_recommendation_runs(test_user)
+
+    assert len(runs) == 1
+    run = runs[0]
+    assert "id" in run
+    assert "created_at" in run
+    assert run["critic_notes"] == "Solid picks."
+    assert isinstance(run["recommendations"], list)
+    assert len(run["recommendations"]) == 1
+    assert run["recommendations"][0]["name"] == "Test Bean"
+    assert isinstance(run["taste_profile_snapshot"], dict)
+    assert run["taste_profile_snapshot"]["narrative_summary"] == "Test profile summary"
+
+
+@pytest.mark.integration
 @pytest.mark.skipif(_no_apis, reason="GOOGLE_API_KEY or BRAVE_API_KEY not set")
 async def test_insufficient_beans_guard(test_user: str):
     """
     run_recommendations raises ValueError when user has fewer than 2 beans logged.
     The test_user fixture creates the user row but logs no beans.
     """
-    with pytest.raises(ValueError, match="at least 2 beans"):
+    with pytest.raises(ValueError, match="at least 3 beans"):
         await run_recommendations(test_user, n_final=3)

@@ -2,13 +2,19 @@ from contextlib import asynccontextmanager
 
 import asyncpg
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from app.agents.input_parsing import AgentLoopError, LowConfidenceError
 from app.agents.orchestrator import parse_and_persist, run_recommendations
 from app.db.connection import close_pool, init_pool
-from app.db.queries import create_user, get_bean_profiles, get_taste_profile
+from app.db.queries import (
+    create_user,
+    get_bean_profiles,
+    get_recommendation_runs,
+    get_taste_profile,
+)
 from app.models.bean_profile import BeanProfile
 from app.models.recommendation import RecommendationResponse
 
@@ -21,6 +27,13 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Coffee Agent", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 class CreateUserRequest(BaseModel):
@@ -108,6 +121,11 @@ async def get_recommendations(
     n: int = Query(default=5, ge=1, le=20),
 ):
     return await run_recommendations(user_id, n_final=n)
+
+
+@app.get("/recommendation-runs")
+async def get_recommendation_runs_endpoint(user_id: str = Query(...)):
+    return await get_recommendation_runs(user_id)
 
 
 @app.get("/health")
