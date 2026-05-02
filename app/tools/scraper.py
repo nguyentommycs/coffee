@@ -11,13 +11,12 @@ USER_AGENT = (
 )
 
 PRIORITY_SELECTORS = [
+    "main",
     ".product-description",
     ".product__description",
     "[data-product-description]",
     ".product-single__description",
-    ".rte",
     "article",
-    "main",
 ]
 
 

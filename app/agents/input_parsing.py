@@ -58,6 +58,7 @@ this schema:
 
 Rules:
 - Only extract information explicitly present in the text. Do not infer or hallucinate.
+- Look carefully for roast level, tasting notes, process, and origin country. Without these, confidence should be low.
 - Normalize process names to: Washed, Natural, Honey, or Anaerobic.
 - Normalize roast levels to: Light, Medium-Light, Medium, or Dark.
 - Tasting notes should be lowercase, individual flavor descriptors \
