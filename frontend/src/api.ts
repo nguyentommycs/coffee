@@ -26,11 +26,11 @@ export function createUser(userId: string): Promise<{ user_id: string }> {
   })
 }
 
-export function addBeans(userId: string, inputs: string[]): Promise<{ parsed: BeanProfile[]; skipped: string[] }> {
+export function addBeans(userId: string, inputs: string[], userScore: number): Promise<{ parsed: BeanProfile[]; skipped: string[] }> {
   return request('/beans', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user_id: userId, inputs }),
+    body: JSON.stringify({ user_id: userId, inputs, user_score: userScore }),
   })
 }
 

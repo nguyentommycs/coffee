@@ -47,6 +47,7 @@ class CreateUserResponse(BaseModel):
 class AddBeansRequest(BaseModel):
     user_id: str
     inputs: list[str]
+    user_score: int | None = None
 
 
 class AddBeansResponse(BaseModel):
@@ -96,7 +97,7 @@ async def post_users(body: CreateUserRequest):
 @app.post("/beans", response_model=AddBeansResponse)
 async def post_beans(body: AddBeansRequest):
     try:
-        parsed, skipped = await parse_and_persist(body.user_id, body.inputs)
+        parsed, skipped = await parse_and_persist(body.user_id, body.inputs, body.user_score)
     except asyncpg.ForeignKeyViolationError:
         raise HTTPException(status_code=404, detail="user not found")
     return AddBeansResponse(parsed=parsed, skipped=skipped)
