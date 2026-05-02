@@ -281,3 +281,73 @@ main {
     border-color: #ccc;
   }
 }
+
+/* Recommendations panel */
+.recommendations-panel {
+  padding: 1.5rem;
+}
+
+.recommendations-panel__header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.recommendations-panel__results {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.critic-notes {
+  padding: 0.75rem 1rem;
+  border-left: 3px solid #646cff;
+  background: rgba(100, 108, 255, 0.08);
+  border-radius: 0 6px 6px 0;
+  line-height: 1.6;
+}
+
+.recommendations-table-wrapper {
+  overflow-x: auto;
+}
+
+.recommendations-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+  text-align: left;
+}
+
+.recommendations-table th,
+.recommendations-table td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #333;
+  white-space: nowrap;
+}
+
+.recommendations-table td:nth-child(6),
+.recommendations-table td:nth-child(10) {
+  white-space: normal;
+  max-width: 200px;
+}
+
+.recommendations-table th {
+  font-weight: 600;
+  color: #aaa;
+}
+
+@media (prefers-color-scheme: light) {
+  .recommendations-table th {
+    color: #666;
+  }
+
+  .recommendations-table th,
+  .recommendations-table td {
+    border-bottom-color: #ddd;
+  }
+
+  .critic-notes {
+    background: rgba(100, 108, 255, 0.06);
+  }
+}
