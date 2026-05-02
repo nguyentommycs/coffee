@@ -5,12 +5,14 @@ All agents call `llm_complete(prompt)` for structured JSON extraction.
 The function returns the raw text so callers can json.loads() it themselves,
 matching the pattern shown in the PRD.
 """
+import asyncio
 import logging
+import re
 import time
 from datetime import datetime, timezone
 
 from google import genai
-from google.genai import types
+from google.genai import errors, types
 
 from app.config import settings
 from app.observability.llm_logger import LLMCallRecord
@@ -18,6 +20,8 @@ from app.observability.llm_logger import LLMCallRecord
 logger = logging.getLogger(__name__)
 
 _client: genai.Client | None = None
+_last_call_at: float = 0.0
+_MIN_CALL_INTERVAL_S = 1.0  # light throttle to reduce 429 frequency
 
 
 def _get_client() -> genai.Client:
@@ -29,6 +33,16 @@ def _get_client() -> genai.Client:
     return _client
 
 
+def _generate(client: genai.Client, prompt: str) -> genai.types.GenerateContentResponse:
+    return client.models.generate_content(
+        model=settings.gemini_model,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            thinking_config=types.ThinkingConfig(thinking_level="MINIMAL"),
+        ),
+    )
+
+
 async def llm_complete(prompt: str, span: str = "unknown") -> str:
     """
     Send a prompt to Gemini and return the response text.
@@ -36,17 +50,31 @@ async def llm_complete(prompt: str, span: str = "unknown") -> str:
 
     All agents expect plain JSON back — prompts should end with
     'Return only valid JSON. No preamble, no markdown fences.'
+
+    Retries once on HTTP 429 using the delay the API reports.
+    A 1s minimum interval between calls reduces 429 frequency.
     """
+    global _last_call_at
+
+    elapsed = time.monotonic() - _last_call_at
+    if elapsed < _MIN_CALL_INTERVAL_S:
+        await asyncio.sleep(_MIN_CALL_INTERVAL_S - elapsed)
+
     client = _get_client()
     t0 = time.monotonic()
+    _last_call_at = time.monotonic()
 
-    response = client.models.generate_content(
-        model=settings.gemini_model,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            thinking_config=types.ThinkingConfig(thinking_level="MINIMAL"),
-        ),
-    )
+    try:
+        response = _generate(client, prompt)
+    except errors.ClientError as exc:
+        if exc.code != 429:
+            raise
+        match = re.search(r"retry in (\d+(?:\.\d+)?)", str(exc), re.IGNORECASE)
+        delay = float(match.group(1)) if match else 30.0
+        logger.warning("429 rate limit; sleeping %.0fs before retry (span=%s)", delay, span)
+        await asyncio.sleep(delay)
+        _last_call_at = time.monotonic()
+        response = _generate(client, prompt)  # final attempt — raises if still 429
 
     latency_ms = (time.monotonic() - t0) * 1000
     text = response.text.strip()
