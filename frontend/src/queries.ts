@@ -29,7 +29,8 @@ export function usePastRuns(userId: string) {
 export function useAddBean(userId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (input: string) => addBeans(userId, [input]),
+    mutationFn: ({ input, score }: { input: string; score: number }) =>
+      addBeans(userId, [input], score),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['beans', userId] })
     },

@@ -137,3 +137,147 @@ button:focus-visible {
   padding: 0.75rem 1.5rem;
   border-bottom: 1px solid #333;
 }
+
+main {
+  text-align: left;
+}
+
+/* Beans panel */
+.beans-panel {
+  display: flex;
+  gap: 2rem;
+  padding: 1.5rem;
+  align-items: flex-start;
+}
+
+.beans-panel__left {
+  flex: 0 0 280px;
+}
+
+.beans-panel__right {
+  flex: 1;
+  min-width: 0;
+}
+
+.add-bean-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.add-bean-form h2,
+.beans-panel__right h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.1em;
+}
+
+.add-bean-form textarea {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.95em;
+  border-radius: 6px;
+  border: 1px solid #555;
+  background: inherit;
+  color: inherit;
+  font-family: inherit;
+  resize: vertical;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.score-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.score-field label {
+  font-size: 0.9em;
+}
+
+.score-value {
+  font-weight: 600;
+}
+
+.score-empty {
+  font-weight: 400;
+  color: #888;
+  font-style: italic;
+}
+
+.score-field input[type='range'] {
+  width: 100%;
+  cursor: pointer;
+  accent-color: #646cff;
+}
+
+.score-field input[type='range'].slider-unset {
+  opacity: 0.45;
+}
+
+.score-ticks {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75em;
+  color: #888;
+  padding: 0 2px;
+}
+
+.add-bean-form__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.inline-error {
+  color: #e74c3c;
+  margin: 0;
+  font-size: 0.9em;
+}
+
+.empty-state {
+  color: #888;
+  font-style: italic;
+}
+
+.bean-table-wrapper {
+  overflow-x: auto;
+}
+
+.bean-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+  text-align: left;
+}
+
+.bean-table th,
+.bean-table td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #333;
+  white-space: nowrap;
+}
+
+.bean-table td:nth-child(6) {
+  white-space: normal;
+  max-width: 200px;
+}
+
+.bean-table th {
+  font-weight: 600;
+  color: #aaa;
+}
+
+@media (prefers-color-scheme: light) {
+  .bean-table th {
+    color: #666;
+  }
+
+  .bean-table th,
+  .bean-table td {
+    border-bottom-color: #ddd;
+  }
+
+  .add-bean-form textarea {
+    border-color: #ccc;
+  }
+}
