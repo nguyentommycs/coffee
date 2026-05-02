@@ -1,9 +1,27 @@
 import json
+from typing import Optional
 
 from app.db.connection import get_pool
 from app.models.bean_profile import BeanProfile
 from app.models.recommendation import RecommendationCandidate
 from app.models.taste_profile import TasteProfile
+
+
+async def create_user(user_id: str) -> None:
+    pool = get_pool()
+    await pool.execute(
+        "INSERT INTO users (id) VALUES ($1) ON CONFLICT (id) DO NOTHING",
+        user_id,
+    )
+
+
+async def get_taste_profile(user_id: str) -> Optional[TasteProfile]:
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT * FROM taste_profiles WHERE user_id = $1",
+        user_id,
+    )
+    return TasteProfile(**dict(row)) if row else None
 
 
 async def upsert_bean_profile(profile: BeanProfile) -> None:
