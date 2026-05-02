@@ -86,6 +86,13 @@ class AgentLoopError(Exception):
         self.partial_result = partial_result
 
 
+class LowConfidenceError(Exception):
+    def __init__(self, msg: str, missing_fields: list[str], input_raw: str):
+        super().__init__(msg)
+        self.missing_fields = missing_fields
+        self.input_raw = input_raw
+
+
 class LLMOutputError(Exception):
     pass
 
