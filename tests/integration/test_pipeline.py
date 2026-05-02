@@ -19,6 +19,28 @@ _no_brave = not settings.brave_api_key
 _no_apis = _no_gemini or _no_brave
 
 
+
+@pytest.mark.integration
+@pytest.mark.skipif(_no_apis, reason="GOOGLE_API_KEY or BRAVE_API_KEY not set")
+async def test_input_parsing_url_returns_bean_profile():
+    """Input parsing resolves a bean name via search and returns a valid BeanProfile."""
+    profile = await input_parsing.run(
+        raw_input="https://www.vervecoffee.com/products/gichathaini",
+        user_id="test-user",
+        user_score=8,
+    )
+
+    assert isinstance(profile, BeanProfile)
+    assert profile.user_id == "test-user"
+    assert profile.user_score == 8
+    assert profile.input_type == "name"
+    assert profile.name  # non-empty
+    assert profile.roaster  # non-empty
+    assert isinstance(profile.tasting_notes, list)
+    assert 0.0 <= profile.confidence <= 1.0
+
+
+
 @pytest.mark.integration
 @pytest.mark.skipif(_no_apis, reason="GOOGLE_API_KEY or BRAVE_API_KEY not set")
 async def test_input_parsing_name_returns_bean_profile():
