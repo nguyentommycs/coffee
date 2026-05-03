@@ -26,7 +26,6 @@ export default function BeanTable({ beans }: Props) {
             <th>Roast level</th>
             <th>Tasting notes</th>
             <th>Score</th>
-            <th>Notes</th>
           </tr>
         </thead>
         <tbody>
@@ -39,7 +38,6 @@ export default function BeanTable({ beans }: Props) {
               <td>{bean.roast_level ?? '—'}</td>
               <td>{bean.tasting_notes.join(', ') || '—'}</td>
               <td>{bean.user_score != null ? `${bean.user_score}/10` : '—'}</td>
-              <td>{bean.user_notes ?? '—'}</td>
             </tr>
           ))}
         </tbody>

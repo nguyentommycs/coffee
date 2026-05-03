@@ -1,4 +1,5 @@
 from app.models.taste_profile import TasteProfile
+from app.tools.flavor_hierarchy import flavor_match_score
 
 
 def score_candidate(candidate: dict, profile: TasteProfile) -> tuple[float, str]:
@@ -21,15 +22,28 @@ def score_candidate(candidate: dict, profile: TasteProfile) -> tuple[float, str]
         score += 0.2
         reasons.append(f"roast match ({candidate['roast_level']})")
 
-    candidate_notes = set(candidate.get("tasting_notes", []))
-    affinity_set = set(profile.flavor_affinities)
-    overlap = candidate_notes & affinity_set
-    if overlap:
-        flavor_score = min(0.3, len(overlap) * 0.1)
-        score += flavor_score
-        reasons.append(f"flavor overlap: {sorted(overlap)}")
+    candidate_notes = candidate.get("tasting_notes", [])
+    flavor_total = 0.0
+    matched_pairs: list[str] = []
 
-    avoided_overlap = candidate_notes & set(profile.avoided_flavors)
+    for affinity in profile.flavor_affinities:
+        best = 0.0
+        best_note = None
+        for note in candidate_notes:
+            s = flavor_match_score(affinity, note)
+            if s > best:
+                best = s
+                best_note = note
+        if best > 0.0:
+            flavor_total += best
+            matched_pairs.append(f"{affinity}~{best_note}({best:.3f})")
+
+    if flavor_total > 0.0:
+        flavor_score = min(0.3, flavor_total)
+        score += flavor_score
+        reasons.append(f"flavor overlap +{flavor_score:.3f} ({', '.join(matched_pairs)})")
+
+    avoided_overlap = set(candidate_notes) & set(profile.avoided_flavors)
     if avoided_overlap:
         score -= 0.15
         reasons.append(f"avoided flavor present: {sorted(avoided_overlap)}")
