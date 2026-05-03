@@ -18,8 +18,10 @@ export default function App() {
       <Header username={username} onSignOut={() => setUsername(null)} />
       <main>
         <BeansPanel userId={username} />
-        <RecommendationsPanel userId={username} />
-        <TasteProfilePanel userId={username} />
+        <div className="bottom-panels">
+          <RecommendationsPanel userId={username} />
+          <TasteProfilePanel userId={username} />
+        </div>
       </main>
     </>
   )

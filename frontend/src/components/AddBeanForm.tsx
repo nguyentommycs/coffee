@@ -63,8 +63,9 @@ export default function AddBeanForm({ userId }: Props) {
           min={1}
           max={10}
           step={1}
-          value={score ?? ''}
+          value={score ?? 5}
           onChange={e => setScore(Number(e.target.value))}
+          onClick={e => setScore(Number((e.currentTarget as HTMLInputElement).value))}
           disabled={mutation.isPending}
           className={score === null ? 'slider-unset' : ''}
         />
