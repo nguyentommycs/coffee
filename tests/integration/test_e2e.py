@@ -44,7 +44,7 @@ async def test_full_pipeline_e2e(test_user: str):
     verify output structure and DB persistence.
     """
     # ── Step 1: Parse and persist ──────────────────────────────────────────
-    parsed, skipped = await parse_and_persist(test_user, _BEAN_INPUTS)
+    parsed, skipped = await parse_and_persist(test_user, _BEAN_INPUTS, 10)
 
     assert isinstance(parsed, list)
     assert isinstance(skipped, list)
