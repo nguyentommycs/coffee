@@ -30,7 +30,8 @@ Your job:
 there are no better options.
 3. Ensure diversity — include no more than 2 candidates from the same roaster.
 4. Return the final list of up to {n_final} candidates in your preferred rank order.
-5. Write a brief critic_notes string (1–2 sentences) describing the recommendation set.
+5. Write a brief critic_notes string (1–2 sentences) describing the recommendation set \
+which will be displayed to the user.
 
 Return a JSON object:
 {{

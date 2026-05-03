@@ -37,8 +37,8 @@ influence on preferred_origins, preferred_processes, flavor_affinities, etc. tha
 scored 1–4. Beans with no score (null) are treated as neutral (score = 5).
 - avoided_flavors should be inferred from flavor notes on beans the user scored 1–4, \
 or from explicit language in user_notes (e.g., "too bitter", "too acidic").
-- flavor_affinities should be high-level themes (e.g., "stone fruit", "citrus", "chocolate") \
-not exhaustive note lists.
+- flavor_affinities should be high-level themes (e.g., "stone fruit", "tea","citrus", "chocolate") \
+not exhaustive note lists. Don't get too specific.
 - narrative_summary should read naturally, like a barista describing a customer's preferences. \
 If score variance is high (some 9s and some 2s), acknowledge that in the summary.
 - Return only valid JSON. No preamble, no markdown fences.\
