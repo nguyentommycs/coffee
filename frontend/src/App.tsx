@@ -4,6 +4,7 @@ import LoginScreen from './components/LoginScreen'
 import Header from './components/Header'
 import BeansPanel from './components/BeansPanel'
 import RecommendationsPanel from './components/RecommendationsPanel'
+import TasteProfilePanel from './components/TasteProfilePanel'
 
 export default function App() {
   const [username, setUsername] = useState<string | null>(() => getUsername())
@@ -18,6 +19,7 @@ export default function App() {
       <main>
         <BeansPanel userId={username} />
         <RecommendationsPanel userId={username} />
+        <TasteProfilePanel userId={username} />
       </main>
     </>
   )
