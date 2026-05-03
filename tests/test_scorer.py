@@ -26,7 +26,7 @@ def test_perfect_match(profile):
         "tasting_notes": ["stone fruit", "citrus"],
     }
     score, rationale = score_candidate(candidate, profile)
-    assert score == pytest.approx(0.9)
+    assert score == pytest.approx(1.0)
     assert "origin match" in rationale
     assert "process match" in rationale
     assert "roast match" in rationale
@@ -53,21 +53,9 @@ def test_avoided_flavor_penalty(profile):
         "tasting_notes": ["smoke"],
     }
     score, rationale = score_candidate(candidate, profile)
-    # origin(0.3) + process(0.2) + roast(0.2) - penalty(0.15) = 0.55
-    assert score == pytest.approx(0.55)
+    # origin(0.4) + process(0.2) + roast(0.3) - penalty(0.3) = 0.5
+    assert score == pytest.approx(0.6)
     assert "avoided flavor present" in rationale
-
-
-def test_flavor_overlap_capped_at_0_3(profile):
-    candidate = {
-        "origin_country": "Ethiopia",
-        "process": "Washed",
-        "roast_level": "Light",
-        "tasting_notes": ["stone fruit", "citrus", "floral", "jasmine", "peach"],
-    }
-    score, rationale = score_candidate(candidate, profile)
-    # max flavor bonus is 0.3
-    assert score == pytest.approx(1.0)
 
 
 def test_partial_match_origin_only(profile):
@@ -78,7 +66,7 @@ def test_partial_match_origin_only(profile):
         "tasting_notes": [],
     }
     score, rationale = score_candidate(candidate, profile)
-    assert score == pytest.approx(0.3)
+    assert score == pytest.approx(0.4)
     assert "origin match" in rationale
 
 

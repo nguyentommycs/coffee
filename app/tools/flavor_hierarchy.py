@@ -1,4 +1,4 @@
-flavor_map = {
+FLAVOR_MAP = {
     # Fruity / Berry
     "blackberry":      ("fruity", "berry"),
     "raspberry":       ("fruity", "berry"),
