@@ -9,12 +9,6 @@ function formatOrigin(c: RecommendationCandidate): string {
   return parts.join(', ') || '—'
 }
 
-function formatInStock(val: boolean | null | undefined): string {
-  if (val === true) return 'Yes'
-  if (val === false) return 'No'
-  return '—'
-}
-
 export default function RecommendationsTable({ recommendations }: Props) {
   if (recommendations.length === 0) {
     return <p className="empty-state">No recommendations yet.</p>
@@ -31,10 +25,7 @@ export default function RecommendationsTable({ recommendations }: Props) {
             <th>Process</th>
             <th>Roast level</th>
             <th>Tasting notes</th>
-            <th>Price</th>
-            <th>In stock</th>
             <th>Match score</th>
-            <th>Rationale</th>
           </tr>
         </thead>
         <tbody>
@@ -48,10 +39,7 @@ export default function RecommendationsTable({ recommendations }: Props) {
               <td>{c.process ?? '—'}</td>
               <td>{c.roast_level ?? '—'}</td>
               <td>{c.tasting_notes.join(', ') || '—'}</td>
-              <td>{c.price_usd != null ? `$${c.price_usd.toFixed(2)}` : '—'}</td>
-              <td>{formatInStock(c.in_stock)}</td>
-              <td>{Math.round(c.match_score * 100)}%</td>
-              <td>{c.match_rationale}</td>
+              <td>{Math.round(c.match_score * 100)}% – {c.match_rationale}</td>
             </tr>
           ))}
         </tbody>
