@@ -6,11 +6,9 @@ The interesting part isn't the coffee. It's the architecture: four cooperating a
 
 ## Demo
 
-<!-- To enable inline playback: drag coffee_demo.mp4 into any GitHub issue/PR comment, copy the resulting user-attachments URL, and paste it as the src below. Repo-committed mp4 files do not auto-render as inline players on GitHub. -->
+[![Coffee Agent demo](https://img.youtube.com/vi/CHNca8DlL3M/maxresdefault.jpg)](https://www.youtube.com/watch?v=CHNca8DlL3M)
 
-<video src="PASTE_USER_ATTACHMENTS_URL_HERE" controls width="720"></video>
-
-If the video doesn't render, [download it](./coffee_demo.mp4) or open the YouTube mirror (link TBD).
+▶ [Watch the demo on YouTube](https://www.youtube.com/watch?v=CHNca8DlL3M)
 
 ![Coffee Agent UI](./demo_image.PNG)
 
