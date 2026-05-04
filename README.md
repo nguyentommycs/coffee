@@ -6,11 +6,9 @@ The interesting part isn't the coffee. It's the architecture: four cooperating a
 
 ## Demo
 
-[![Coffee Agent demo](https://img.youtube.com/vi/CHNca8DlL3M/maxresdefault.jpg)](https://www.youtube.com/watch?v=CHNca8DlL3M)
+[![Coffee Agent UI](./demo_image.PNG)](https://www.youtube.com/watch?v=CHNca8DlL3M)
 
 ▶ [Watch the demo on YouTube](https://www.youtube.com/watch?v=CHNca8DlL3M)
-
-![Coffee Agent UI](./demo_image.PNG)
 
 ## What it does
 
