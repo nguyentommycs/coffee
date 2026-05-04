@@ -41,14 +41,14 @@ def score_candidate(candidate: dict, profile: TasteProfile) -> tuple[float, str]
     if flavor_total > 0.0:
         flavor_score = min(0.3, flavor_total)
         score += flavor_score
-        reasons.append(f"flavor overlap +({', '.join(matched_pairs)})")
+        reasons.append(f"flavor overlap ({', '.join(matched_pairs)})")
 
     avoided_overlap = set(candidate_notes) & set(profile.avoided_flavors)
     if avoided_overlap:
         score -= 0.3
         reasons.append(f"avoided flavor present: {sorted(avoided_overlap)}")
-    if score >1.0:
-        score = 1.0
+    if score >0.95:
+        score = 0.95
     elif score < 0.0:
         score = 0.0
     rationale = "; ".join(reasons) if reasons else "no strong attribute match"

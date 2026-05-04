@@ -58,6 +58,7 @@ this schema:
 
 Rules:
 - Only extract information explicitly present in the text. Do not infer or hallucinate.
+- If the roast level is not explicitly stated, assume it's Medium-Light.
 - Look carefully for roast level, tasting notes, process, and origin country. Without these, confidence should be low.
 - Normalize process names to: Washed, Natural, Honey, or Anaerobic.
 - Normalize roast levels to: Light, Medium-Light, Medium, or Dark.
