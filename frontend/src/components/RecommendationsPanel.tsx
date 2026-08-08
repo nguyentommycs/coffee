@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { useBeans, useRunRecommendations } from '../queries'
-import type { RecommendationResponse } from '../types'
+import { useBeans, useFeedback, useRunRecommendations, useSetFeedback } from '../queries'
+import type { FeedbackVerdict, RecommendationCandidate, RecommendationResponse } from '../types'
 import Spinner from './Spinner'
 import CriticNotes from './CriticNotes'
-import RecommendationsTable from './RecommendationsTable'
+import RecommendationsTable, { feedbackKey } from './RecommendationsTable'
 
 interface Props {
   userId: string
@@ -12,7 +12,22 @@ interface Props {
 export default function RecommendationsPanel({ userId }: Props) {
   const { data: beans } = useBeans(userId)
   const mutation = useRunRecommendations(userId)
+  const { data: feedbackList } = useFeedback(userId)
+  const setFeedback = useSetFeedback(userId)
   const [result, setResult] = useState<RecommendationResponse | null>(null)
+
+  const feedback = new Map<string, FeedbackVerdict>(
+    (feedbackList ?? []).map(fb => [feedbackKey(fb.roaster, fb.name), fb.verdict]),
+  )
+
+  function handleFeedback(c: RecommendationCandidate, verdict: FeedbackVerdict | null) {
+    setFeedback.mutate({
+      roaster: c.roaster,
+      name: c.name,
+      product_url: c.product_url,
+      verdict,
+    })
+  }
 
   const beanCount = beans?.length ?? 0
   const isDisabled = beanCount < 3 || mutation.isPending
@@ -44,7 +59,11 @@ export default function RecommendationsPanel({ userId }: Props) {
       {result && (
         <div className="recommendations-panel__results">
           <CriticNotes notes={result.critic_notes} />
-          <RecommendationsTable recommendations={result.recommendations} />
+          <RecommendationsTable
+            recommendations={result.recommendations}
+            feedback={feedback}
+            onFeedback={handleFeedback}
+          />
         </div>
       )}
     </section>

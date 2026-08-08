@@ -667,6 +667,29 @@ main {
   color: #7d5840;
 }
 
+.feedback-btn {
+  background: transparent;
+  border: 1px solid #c5a47e;
+  border-radius: 6px;
+  padding: 0.15rem 0.4rem;
+  margin-right: 0.25rem;
+  font-size: 0.95em;
+  line-height: 1.2;
+  opacity: 0.55;
+}
+
+.feedback-btn:hover {
+  background: rgba(94, 52, 32, 0.09);
+  border-color: #7a4526;
+  opacity: 1;
+}
+
+.feedback-btn--active {
+  background: rgba(94, 52, 32, 0.16);
+  border-color: #5e3420;
+  opacity: 1;
+}
+
 /* Taste profile panel */
 .taste-profile-panel {
   flex: 1;

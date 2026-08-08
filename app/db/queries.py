@@ -3,6 +3,7 @@ from typing import Optional
 
 from app.db.connection import get_pool
 from app.models.bean_profile import BeanProfile
+from app.models.feedback import RecommendationFeedback
 from app.models.recommendation import RecommendationCandidate
 from app.models.taste_profile import TasteProfile
 
@@ -223,3 +224,54 @@ async def insert_recommendation_run(
         critic_notes,
         json.dumps(trace),
     )
+
+
+async def upsert_recommendation_feedback(fb: RecommendationFeedback) -> None:
+    pool = get_pool()
+    await pool.execute(
+        """
+        INSERT INTO recommendation_feedback
+            (user_id, roaster, name, product_url, verdict, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT (user_id, roaster, name)
+        DO UPDATE SET
+            verdict = EXCLUDED.verdict,
+            product_url = EXCLUDED.product_url,
+            updated_at = EXCLUDED.updated_at
+        """,
+        fb.user_id,
+        fb.roaster,
+        fb.name,
+        fb.product_url,
+        fb.verdict,
+        fb.updated_at,
+    )
+
+
+async def get_recommendation_feedback(user_id: str) -> list[RecommendationFeedback]:
+    pool = get_pool()
+    rows = await pool.fetch(
+        """
+        SELECT user_id, roaster, name, product_url, verdict, updated_at
+        FROM recommendation_feedback
+        WHERE user_id = $1
+        ORDER BY updated_at DESC
+        """,
+        user_id,
+    )
+    return [RecommendationFeedback(**dict(row)) for row in rows]
+
+
+async def delete_recommendation_feedback(user_id: str, roaster: str, name: str) -> bool:
+    pool = get_pool()
+    row = await pool.fetchrow(
+        """
+        DELETE FROM recommendation_feedback
+        WHERE user_id = $1 AND roaster = $2 AND name = $3
+        RETURNING id
+        """,
+        user_id,
+        roaster,
+        name,
+    )
+    return row is not None

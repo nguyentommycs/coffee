@@ -99,3 +99,14 @@ export interface RecommendationRun {
   recommendations: RecommendationCandidate[]
   taste_profile_snapshot: TasteProfile
 }
+
+export type FeedbackVerdict = 'up' | 'down'
+
+export interface RecommendationFeedback {
+  user_id: string
+  roaster: string
+  name: string
+  product_url: string
+  verdict: FeedbackVerdict
+  updated_at: string
+}

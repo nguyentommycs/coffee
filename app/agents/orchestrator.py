@@ -11,6 +11,7 @@ from app.agents import critic, input_parsing, profiler, recommendation
 from app.agents.input_parsing import AgentLoopError
 from app.db.queries import (
     get_bean_profiles,
+    get_recommendation_feedback,
     insert_recommendation_run,
     upsert_bean_profile,
     upsert_taste_profile,
@@ -69,15 +70,22 @@ async def run_recommendations(
             "Log at least 3 beans before requesting recommendations."
         )
 
+    feedback = await get_recommendation_feedback(user_id)
+    downvoted_urls = {fb.product_url for fb in feedback if fb.verdict == "down"}
+
     trace = TraceLogger(pipeline_id=uuid4(), user_id=user_id)
 
     with trace.activate():
         with trace.span("profiler", type="agent", n_beans=len(all_profiles)):
-            taste_profile = await profiler.run(user_id, all_profiles)
+            taste_profile = await profiler.run(user_id, all_profiles, feedback=feedback)
         await upsert_taste_profile(taste_profile)
 
         with trace.span("recommendation", type="agent", broad_mode=False):
-            candidates = await recommendation.run(taste_profile, n_recommendations=10)
+            candidates = await recommendation.run(
+                taste_profile,
+                n_recommendations=10,
+                exclude_urls=downvoted_urls or None,
+            )
 
         with trace.span("critic", type="agent", n_candidates=len(candidates)):
             review = await critic.run(candidates, taste_profile, n_final=n_final)
@@ -102,7 +110,7 @@ async def run_recommendations(
                     taste_profile,
                     n_recommendations=10,
                     broad_mode=True,
-                    exclude_urls=reviewed_urls,
+                    exclude_urls=reviewed_urls | downvoted_urls,
                     objections=review.objections,
                 )
             combined = final + [

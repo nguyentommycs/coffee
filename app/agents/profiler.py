@@ -9,6 +9,7 @@ import logging
 
 from app.llm import llm_complete
 from app.models.bean_profile import BeanProfile
+from app.models.feedback import RecommendationFeedback
 from app.models.taste_profile import TasteProfile
 
 logger = logging.getLogger(__name__)
@@ -19,7 +20,7 @@ and produce a structured taste profile.
 
 Bean history (JSON):
 {profiles_json}
-
+{feedback_block}
 Produce a JSON object with this schema:
 {{
   "preferred_origins": string[],
@@ -44,6 +45,14 @@ If score variance is high (some 9s and some 2s), acknowledge that in the summary
 - Return only valid JSON. No preamble, no markdown fences.\
 """
 
+_FEEDBACK_BLOCK_TEMPLATE = """
+Recent feedback the user gave on recommended coffees (JSON):
+{feedback_json}
+Treat "up" verdicts as coffees the user is interested in (positive signal, like a well-scored \
+bean) and "down" verdicts as coffees they rejected (negative signal informing avoided_flavors \
+and lowering affinity for those attributes).
+"""
+
 _SCHEMA_REMINDER = (
     "\n\nIMPORTANT: Your previous response was not valid JSON. "
     "Return ONLY a valid JSON object matching the schema above. "
@@ -57,9 +66,15 @@ class ProfilerError(Exception):
     pass
 
 
-async def run(user_id: str, bean_profiles: list[BeanProfile]) -> TasteProfile:
+async def run(
+    user_id: str,
+    bean_profiles: list[BeanProfile],
+    feedback: list[RecommendationFeedback] | None = None,
+) -> TasteProfile:
     """
     Analyze bean history and return a TasteProfile.
+    Thumbs up/down feedback on past recommendations, when present, is folded into
+    the prompt as additional positive/negative signal.
     Returns a zeroed profile for empty input. Raises ProfilerError on LLM JSON failure.
     """
     if not bean_profiles:
@@ -79,7 +94,20 @@ async def run(user_id: str, bean_profiles: list[BeanProfile]) -> TasteProfile:
         [p.model_dump(mode="json") for p in bean_profiles],
         indent=2,
     )
-    prompt = _PROFILER_PROMPT_TEMPLATE.format(profiles_json=profiles_json)
+    feedback_block = ""
+    if feedback:
+        feedback_json = json.dumps(
+            [
+                {"roaster": fb.roaster, "name": fb.name, "verdict": fb.verdict}
+                for fb in feedback
+            ],
+            indent=2,
+        )
+        feedback_block = _FEEDBACK_BLOCK_TEMPLATE.format(feedback_json=feedback_json)
+
+    prompt = _PROFILER_PROMPT_TEMPLATE.format(
+        profiles_json=profiles_json, feedback_block=feedback_block
+    )
 
     raw = await llm_complete(prompt, span="profiler")
 

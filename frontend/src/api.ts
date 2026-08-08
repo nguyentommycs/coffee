@@ -1,5 +1,7 @@
 import type {
   BeanProfile,
+  FeedbackVerdict,
+  RecommendationFeedback,
   TasteProfile,
   RecommendationResponse,
   RecommendationRun,
@@ -88,4 +90,28 @@ export function fetchTraces(userId: string): Promise<TraceSummary[]> {
 
 export function fetchTrace(userId: string, runId: string): Promise<TraceDetail> {
   return request(`/traces/${encodeURIComponent(runId)}?user_id=${encodeURIComponent(userId)}`)
+}
+
+export function getFeedback(userId: string): Promise<RecommendationFeedback[]> {
+  return request(`/feedback?user_id=${encodeURIComponent(userId)}`)
+}
+
+export function postFeedback(
+  userId: string,
+  fb: { roaster: string; name: string; product_url: string; verdict: FeedbackVerdict },
+): Promise<RecommendationFeedback> {
+  return request('/feedback', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: userId, ...fb }),
+  })
+}
+
+export function deleteFeedback(
+  userId: string,
+  roaster: string,
+  name: string,
+): Promise<{ deleted: boolean }> {
+  const params = new URLSearchParams({ user_id: userId, roaster, name })
+  return request(`/feedback?${params.toString()}`, { method: 'DELETE' })
 }
