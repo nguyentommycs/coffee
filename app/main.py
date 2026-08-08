@@ -22,6 +22,7 @@ from app.db.queries import (
 )
 from app.models.bean_profile import BeanProfile
 from app.models.recommendation import RecommendationResponse
+from app.pricing import estimate_cost_usd
 
 
 @asynccontextmanager
@@ -175,6 +176,18 @@ def _summarize_trace(run: dict) -> dict:
     def tokens(key: str) -> int:
         return sum((s.get("attrs") or {}).get(key) or 0 for s in llm_spans)
 
+    def span_cost(span: dict) -> float | None:
+        attrs = span.get("attrs") or {}
+        cost = attrs.get("cost_usd")
+        if cost is not None:
+            return cost
+        # Traces written before costs were recorded: price them from the model + tokens.
+        return estimate_cost_usd(
+            attrs.get("model"), attrs.get("input_tokens"), attrs.get("output_tokens")
+        )
+
+    costs = [c for c in (span_cost(s) for s in llm_spans) if c is not None]
+
     return {
         "run_id": run["run_id"],
         "created_at": run["created_at"],
@@ -183,6 +196,7 @@ def _summarize_trace(run: dict) -> dict:
         "llm_calls": len(llm_spans),
         "total_input_tokens": tokens("input_tokens"),
         "total_output_tokens": tokens("output_tokens"),
+        "total_cost_usd": sum(costs) if costs else None,
         "span_count": len(spans),
     }
 

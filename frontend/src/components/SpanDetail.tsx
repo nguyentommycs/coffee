@@ -1,5 +1,5 @@
 import type { TraceSpan } from '../types'
-import { formatDuration } from './TraceRunList'
+import { formatCost, formatDuration } from './TraceRunList'
 
 interface Props {
   span: TraceSpan
@@ -21,7 +21,9 @@ export default function SpanDetail({ span, onClose }: Props) {
       ? `${(Number(attrs.input_tokens) || 0).toLocaleString()} in / ${(Number(attrs.output_tokens) || 0).toLocaleString()} out`
       : null
   const rows = Object.entries(attrs).filter(
-    ([key]) => !TEXT_ATTRS.includes(key) && !(tokenLine && (key === 'input_tokens' || key === 'output_tokens')),
+    ([key]) =>
+      !TEXT_ATTRS.includes(key) &&
+      !(tokenLine && (key === 'input_tokens' || key === 'output_tokens' || key === 'cost_usd')),
   )
 
   return (
@@ -46,10 +48,16 @@ export default function SpanDetail({ span, onClose }: Props) {
             <td>{formatDuration(span.duration_ms)}</td>
           </tr>
           {tokenLine && (
-            <tr>
-              <th>Tokens</th>
-              <td>{tokenLine}</td>
-            </tr>
+            <>
+              <tr>
+                <th>Tokens</th>
+                <td>{tokenLine}</td>
+              </tr>
+              <tr>
+                <th>Cost</th>
+                <td>{formatCost(attrs.cost_usd as number | null | undefined)}</td>
+              </tr>
+            </>
           )}
           {rows.map(([key, value]) => (
             <tr key={key}>

@@ -340,9 +340,18 @@ main {
 }
 
 .trace-row__duration {
-  flex: 0 0 4.5rem;
+  flex: 0 0 9.5rem;
   text-align: right;
   color: #7d5840;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trace-row__tokens {
+  margin-right: 0.5rem;
+  font-size: 0.8em;
+  opacity: 0.75;
 }
 
 .span-detail {
