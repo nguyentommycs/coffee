@@ -104,7 +104,7 @@ export interface RecommendationRun {
   created_at: string
   critic_notes: string
   recommendations: RecommendationCandidate[]
-  taste_profile_snapshot: TasteProfile
+  taste_profile_snapshot: TasteProfile | null
   total_cost_usd: number | null
 }
 

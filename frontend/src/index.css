@@ -1016,3 +1016,143 @@ main {
   color: #8a7566;
   font-variant-numeric: tabular-nums;
 }
+
+/* Run comparison */
+.history-panel__run-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.compare-check {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75em;
+  color: #7d5840;
+  cursor: pointer;
+}
+
+.compare-check input:disabled + span {
+  opacity: 0.45;
+}
+
+.compare-btn {
+  background: #5e3420;
+  border: 1px solid #5e3420;
+  color: #f5ede0;
+  border-radius: 6px;
+  padding: 0.3rem 0.7rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.85em;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.compare-btn:hover {
+  background: #7a4526;
+}
+
+.run-comparison__header {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.run-comparison__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  background: rgba(94, 52, 32, 0.05);
+  border: 1px solid #d4bc9a;
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+}
+
+.run-comparison__meta-label {
+  font-size: 0.75em;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #7d5840;
+  font-weight: 600;
+}
+
+.run-comparison__meta-when {
+  font-weight: 600;
+}
+
+.run-comparison__muted {
+  color: #7d5840;
+  font-size: 0.85em;
+}
+
+.run-comparison__heading {
+  margin: 1.1rem 0 0.4rem;
+  font-size: 0.95em;
+  color: #4a2c1a;
+}
+
+.run-comparison__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.run-comparison__candidate {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.6rem;
+}
+
+.run-comparison__candidate-name {
+  font-weight: 600;
+}
+
+.run-comparison__score {
+  font-variant-numeric: tabular-nums;
+  color: #4a2c1a;
+  font-size: 0.9em;
+}
+
+.run-comparison__delta-up {
+  color: #3f6b3f;
+  font-weight: 600;
+  font-size: 0.85em;
+}
+
+.run-comparison__delta-down {
+  color: #a33c2e;
+  font-weight: 600;
+  font-size: 0.85em;
+}
+
+.run-comparison__drift-row {
+  margin-bottom: 0.6rem;
+}
+
+.run-comparison__drift-label {
+  display: block;
+  font-size: 0.8em;
+  color: #7d5840;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.chip--added {
+  background: rgba(63, 107, 63, 0.12);
+  border-color: rgba(63, 107, 63, 0.45);
+  color: #3f6b3f;
+  font-weight: 600;
+}
+
+.chip--removed {
+  background: rgba(125, 88, 64, 0.08);
+  border-color: #d4bc9a;
+  color: #7d5840;
+  text-decoration: line-through;
+}
