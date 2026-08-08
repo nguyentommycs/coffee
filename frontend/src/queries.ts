@@ -1,14 +1,18 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { BeanEditableFields } from './api'
+import type { FeedbackVerdict } from './types'
 import {
   ApiError,
   addBeans,
+  deleteFeedback,
   fetchTrace,
   fetchTraces,
   getBeans,
+  getFeedback,
   getProfile,
   getRecommendationRuns,
   getRecommendations,
+  postFeedback,
   updateBean,
 } from './api'
 
@@ -82,6 +86,36 @@ export function useRunRecommendations(userId: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profile', userId] })
       queryClient.invalidateQueries({ queryKey: ['pastRuns', userId] })
+    },
+  })
+}
+
+export function useFeedback(userId: string) {
+  return useQuery({
+    queryKey: ['feedback', userId],
+    queryFn: () => getFeedback(userId),
+  })
+}
+
+export function useSetFeedback(userId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      roaster,
+      name,
+      product_url,
+      verdict,
+    }: {
+      roaster: string
+      name: string
+      product_url: string
+      verdict: FeedbackVerdict | null
+    }) => {
+      if (verdict === null) await deleteFeedback(userId, roaster, name)
+      else await postFeedback(userId, { roaster, name, product_url, verdict })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['feedback', userId] })
     },
   })
 }

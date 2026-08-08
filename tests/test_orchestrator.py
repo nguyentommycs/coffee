@@ -9,6 +9,7 @@ import pytest
 
 from app.agents import orchestrator
 from app.models.bean_profile import BeanProfile
+from app.models.feedback import RecommendationFeedback
 from app.models.recommendation import (
     CriticObjection,
     CriticReview,
@@ -68,6 +69,9 @@ def _objection(slug: str) -> CriticObjection:
 def mocks():
     with (
         patch("app.agents.orchestrator.get_bean_profiles", new_callable=AsyncMock) as beans,
+        patch(
+            "app.agents.orchestrator.get_recommendation_feedback", new_callable=AsyncMock
+        ) as feedback,
         patch("app.agents.orchestrator.upsert_taste_profile", new_callable=AsyncMock),
         patch("app.agents.orchestrator.insert_recommendation_run", new_callable=AsyncMock) as insert,
         patch("app.agents.orchestrator.profiler.run", new_callable=AsyncMock) as prof,
@@ -75,8 +79,15 @@ def mocks():
         patch("app.agents.orchestrator.critic.run", new_callable=AsyncMock) as crit,
     ):
         beans.return_value = _BEANS
+        feedback.return_value = []
         prof.return_value = _TASTE_PROFILE
-        yield {"insert": insert, "recommendation": rec, "critic": crit}
+        yield {
+            "insert": insert,
+            "recommendation": rec,
+            "critic": crit,
+            "profiler": prof,
+            "feedback": feedback,
+        }
 
 
 def _span_names(insert_mock) -> list[str]:
@@ -165,3 +176,37 @@ async def test_round1_approved_carried_into_second_review(mocks):
 
     combined = mocks["critic"].call_args_list[1].args[0]
     assert [c.name for c in combined] == ["a", "x"]
+
+
+@pytest.mark.asyncio
+async def test_downvoted_urls_are_excluded_and_feedback_reaches_profiler(mocks):
+    down_url = "https://example.com/products/rejected"
+    feedback = [
+        RecommendationFeedback(
+            user_id="u1",
+            roaster="Onyx Coffee Lab",
+            name="Rejected",
+            product_url=down_url,
+            verdict="down",
+        ),
+        RecommendationFeedback(
+            user_id="u1",
+            roaster="Sey Coffee",
+            name="Liked",
+            product_url="https://example.com/products/liked",
+            verdict="up",
+        ),
+    ]
+    mocks["feedback"].return_value = feedback
+
+    approved = [_candidate("a"), _candidate("b"), _candidate("c")]
+    mocks["recommendation"].return_value = approved
+    mocks["critic"].return_value = CriticReview(
+        approved=approved, objections=[], critic_notes="Good set."
+    )
+
+    await orchestrator.run_recommendations("u1")
+
+    rec_kwargs = mocks["recommendation"].call_args_list[0].kwargs
+    assert rec_kwargs["exclude_urls"] == {down_url}
+    assert mocks["profiler"].call_args.kwargs["feedback"] == feedback

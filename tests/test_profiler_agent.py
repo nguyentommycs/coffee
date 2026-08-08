@@ -10,6 +10,7 @@ import pytest
 
 from app.agents.profiler import ProfilerError, _EMPTY_PROFILE_SUMMARY, run
 from app.models.bean_profile import BeanProfile
+from app.models.feedback import RecommendationFeedback
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -209,3 +210,52 @@ async def test_missing_llm_fields_default_to_empty_lists():
     assert profile.preferred_processes == []
     assert profile.avoided_flavors == []
     assert profile.narrative_summary == "Minimal profile."
+
+
+@pytest.mark.asyncio
+async def test_feedback_is_included_in_prompt():
+    feedback = [
+        RecommendationFeedback(
+            user_id="user1",
+            roaster="Sey Coffee",
+            name="Kiangoi",
+            product_url="https://seycoffee.com/products/kiangoi",
+            verdict="up",
+        ),
+        RecommendationFeedback(
+            user_id="user1",
+            roaster="Blue Bottle",
+            name="Toscano Dark",
+            product_url="https://bluebottlecoffee.com/products/toscano",
+            verdict="down",
+        ),
+    ]
+    with patch("app.agents.profiler.llm_complete", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = _FULL_LLM_RESPONSE
+        await run("user1", [_HIGH_SCORE_BEAN], feedback=feedback)
+
+    prompt = mock_llm.await_args.args[0]
+    assert "Recent feedback the user gave on recommended coffees" in prompt
+    assert "Sey Coffee" in prompt
+    assert "Kiangoi" in prompt
+    assert '"verdict": "up"' in prompt
+    assert "Toscano Dark" in prompt
+    assert '"verdict": "down"' in prompt
+    # The JSON-only instruction must still be the last thing the model sees.
+    assert prompt.endswith("Return only valid JSON. No preamble, no markdown fences.")
+
+
+@pytest.mark.asyncio
+async def test_no_feedback_omits_feedback_block():
+    with patch("app.agents.profiler.llm_complete", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = _FULL_LLM_RESPONSE
+        await run("user1", [_HIGH_SCORE_BEAN])
+        prompt_without = mock_llm.await_args.args[0]
+
+        mock_llm.reset_mock()
+        await run("user1", [_HIGH_SCORE_BEAN], feedback=[])
+        prompt_empty_list = mock_llm.await_args.args[0]
+
+    assert "Recent feedback the user gave on recommended coffees" not in prompt_without
+    # An empty feedback list must not perturb the prompt at all.
+    assert prompt_empty_list == prompt_without

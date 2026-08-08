@@ -13,14 +13,18 @@ from app.agents.orchestrator import parse_and_persist, run_recommendations
 from app.db.connection import close_pool, init_pool
 from app.db.queries import (
     create_user,
+    delete_recommendation_feedback,
     get_bean_profiles,
     get_pipeline_trace,
     get_pipeline_traces,
+    get_recommendation_feedback,
     get_recommendation_runs,
     get_taste_profile,
     update_bean_profile,
+    upsert_recommendation_feedback,
 )
 from app.models.bean_profile import BeanProfile
+from app.models.feedback import RecommendationFeedback
 from app.models.recommendation import RecommendationResponse
 from app.pricing import estimate_cost_usd
 
@@ -80,6 +84,14 @@ class UpdateBeanRequest(BaseModel):
         if v is not None and not (1 <= v <= 10):
             raise ValueError("user_score must be between 1 and 10")
         return v
+
+
+class FeedbackRequest(BaseModel):
+    user_id: str
+    roaster: str
+    name: str
+    product_url: str
+    verdict: Literal["up", "down"]
 
 
 @app.exception_handler(AgentLoopError)
@@ -157,6 +169,33 @@ async def get_recommendations(
     n: int = Query(default=5, ge=1, le=20),
 ):
     return await run_recommendations(user_id, n_final=n)
+
+
+@app.post("/feedback", response_model=RecommendationFeedback)
+async def post_feedback(body: FeedbackRequest):
+    feedback = RecommendationFeedback(**body.model_dump())
+    try:
+        await upsert_recommendation_feedback(feedback)
+    except asyncpg.ForeignKeyViolationError:
+        raise HTTPException(status_code=404, detail="user not found")
+    return feedback
+
+
+@app.get("/feedback", response_model=list[RecommendationFeedback])
+async def get_feedback(user_id: str = Query(...)):
+    return await get_recommendation_feedback(user_id)
+
+
+@app.delete("/feedback")
+async def delete_feedback(
+    user_id: str = Query(...),
+    roaster: str = Query(...),
+    name: str = Query(...),
+):
+    deleted = await delete_recommendation_feedback(user_id, roaster, name)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="feedback not found")
+    return {"deleted": True}
 
 
 @app.get("/recommendation-runs")
