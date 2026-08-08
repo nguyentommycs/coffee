@@ -40,6 +40,29 @@ export function getBeans(userId: string): Promise<BeanProfile[]> {
   return request(`/beans?user_id=${encodeURIComponent(userId)}`)
 }
 
+export type BeanEditableFields = Pick<
+  BeanProfile,
+  | 'name'
+  | 'roaster'
+  | 'origin_country'
+  | 'origin_region'
+  | 'farm_or_cooperative'
+  | 'process'
+  | 'variety'
+  | 'roast_level'
+  | 'tasting_notes'
+  | 'user_score'
+  | 'user_notes'
+>
+
+export function updateBean(userId: string, beanId: string, fields: BeanEditableFields): Promise<BeanProfile> {
+  return request(`/beans/${encodeURIComponent(beanId)}?user_id=${encodeURIComponent(userId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields),
+  })
+}
+
 export function getProfile(userId: string): Promise<TasteProfile> {
   return request(`/profile?user_id=${encodeURIComponent(userId)}`)
 }
