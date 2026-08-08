@@ -1,4 +1,11 @@
-import type { BeanProfile, TasteProfile, RecommendationResponse, RecommendationRun } from './types'
+import type {
+  BeanProfile,
+  TasteProfile,
+  RecommendationResponse,
+  RecommendationRun,
+  TraceDetail,
+  TraceSummary,
+} from './types'
 
 export class ApiError extends Error {
   status: number
@@ -73,4 +80,12 @@ export function getRecommendations(userId: string, n = 5): Promise<Recommendatio
 
 export function getRecommendationRuns(userId: string): Promise<RecommendationRun[]> {
   return request(`/recommendation-runs?user_id=${encodeURIComponent(userId)}`)
+}
+
+export function fetchTraces(userId: string): Promise<TraceSummary[]> {
+  return request(`/traces?user_id=${encodeURIComponent(userId)}`)
+}
+
+export function fetchTrace(userId: string, runId: string): Promise<TraceDetail> {
+  return request(`/traces/${encodeURIComponent(runId)}?user_id=${encodeURIComponent(userId)}`)
 }

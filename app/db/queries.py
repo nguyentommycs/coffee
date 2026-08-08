@@ -166,6 +166,43 @@ async def get_recommendation_runs(user_id: str) -> list[dict]:
     return [dict(row) for row in rows]
 
 
+def _row_to_trace(row) -> dict:
+    raw = row["pipeline_trace"]
+    return {
+        "run_id": str(row["id"]),
+        "created_at": row["created_at"],
+        "trace": json.loads(raw) if isinstance(raw, str) else raw,
+    }
+
+
+async def get_pipeline_traces(user_id: str) -> list[dict]:
+    pool = get_pool()
+    rows = await pool.fetch(
+        """
+        SELECT id, created_at, pipeline_trace
+        FROM recommendation_runs
+        WHERE user_id = $1
+        ORDER BY created_at DESC
+        """,
+        user_id,
+    )
+    return [_row_to_trace(row) for row in rows]
+
+
+async def get_pipeline_trace(run_id, user_id: str) -> Optional[dict]:
+    pool = get_pool()
+    row = await pool.fetchrow(
+        """
+        SELECT id, created_at, pipeline_trace
+        FROM recommendation_runs
+        WHERE id = $1 AND user_id = $2
+        """,
+        run_id,
+        user_id,
+    )
+    return _row_to_trace(row) if row else None
+
+
 async def insert_recommendation_run(
     user_id: str,
     taste_profile: TasteProfile,

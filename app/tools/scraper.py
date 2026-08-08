@@ -4,6 +4,8 @@ from urllib.parse import urlparse
 import httpx
 from bs4 import BeautifulSoup
 
+from app.observability.trace import child_span
+
 logger = logging.getLogger(__name__)
 
 USER_AGENT = (
@@ -30,31 +32,37 @@ def _parse_price(text: str | None) -> float | None:
 
 async def scrape_page(url: str) -> str:
     """Fetches URL, strips HTML, returns cleaned product text (max ~12 000 chars)."""
-    async with httpx.AsyncClient() as client:
-        try:
-            resp = await client.get(
-                url, headers={"User-Agent": USER_AGENT}, timeout=10, follow_redirects=True
-            )
-            resp.raise_for_status()
-        except httpx.HTTPError as exc:
-            logger.warning("scrape_page failed for %s: %s", url, exc)
-            return ""
+    with child_span("scrape_page", type="tool", url=url) as span:
+        async with httpx.AsyncClient() as client:
+            try:
+                resp = await client.get(
+                    url, headers={"User-Agent": USER_AGENT}, timeout=10, follow_redirects=True
+                )
+                resp.raise_for_status()
+            except httpx.HTTPError as exc:
+                logger.warning("scrape_page failed for %s: %s", url, exc)
+                if span is not None:
+                    span["attrs"]["result_chars"] = 0
+                return ""
 
-    soup = BeautifulSoup(resp.text, "html.parser")
-    for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
-        tag.decompose()
+        soup = BeautifulSoup(resp.text, "html.parser")
+        for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
+            tag.decompose()
 
-    content = ""
-    for selector in PRIORITY_SELECTORS:
-        el = soup.select_one(selector)
-        if el:
-            content = el.get_text(separator=" ", strip=True)
-            break
+        content = ""
+        for selector in PRIORITY_SELECTORS:
+            el = soup.select_one(selector)
+            if el:
+                content = el.get_text(separator=" ", strip=True)
+                break
 
-    if not content:
-        content = soup.get_text(separator=" ", strip=True)
+        if not content:
+            content = soup.get_text(separator=" ", strip=True)
 
-    return content[:12000]
+        content = content[:12000]
+        if span is not None:
+            span["attrs"]["result_chars"] = len(content)
+        return content
 
 
 def _build_base_url(url: str) -> str:
@@ -127,37 +135,44 @@ async def scrape_roaster_catalog(catalog_url: str) -> list[dict]:
     Returns list of dicts: {name, url, price_usd (or None)}.
     Tries Shopify JSON API first, then domain-specific CSS selectors, then generic link scraping.
     """
-    async with httpx.AsyncClient() as client:
-        shopify_results = await _try_shopify_json(client, catalog_url)
-        if shopify_results is not None:
-            return shopify_results
+    with child_span("scrape_roaster_catalog", type="tool", url=catalog_url) as span:
+        async with httpx.AsyncClient() as client:
+            shopify_results = await _try_shopify_json(client, catalog_url)
+            if shopify_results is not None:
+                if span is not None:
+                    span["attrs"]["items_found"] = len(shopify_results)
+                return shopify_results
 
-        try:
-            resp = await client.get(
-                catalog_url,
-                headers={"User-Agent": USER_AGENT},
-                timeout=15,
-                follow_redirects=True,
-            )
-            resp.raise_for_status()
-        except httpx.HTTPError as exc:
-            logger.warning("scrape_roaster_catalog failed for %s: %s", catalog_url, exc)
-            return []
+            try:
+                resp = await client.get(
+                    catalog_url,
+                    headers={"User-Agent": USER_AGENT},
+                    timeout=15,
+                    follow_redirects=True,
+                )
+                resp.raise_for_status()
+            except httpx.HTTPError as exc:
+                logger.warning("scrape_roaster_catalog failed for %s: %s", catalog_url, exc)
+                if span is not None:
+                    span["attrs"]["items_found"] = 0
+                return []
 
-    soup = BeautifulSoup(resp.text, "html.parser")
-    base = _build_base_url(catalog_url)
-    seen_urls: set[str] = set()
-    results: list[dict] = []
+        soup = BeautifulSoup(resp.text, "html.parser")
+        base = _build_base_url(catalog_url)
+        seen_urls: set[str] = set()
+        results: list[dict] = []
 
-    for a in soup.find_all("a", href=True):
-        href: str = a["href"]
-        if "/products/" not in href:
-            continue
-        if not href.startswith("http"):
-            href = base + href
-        if href in seen_urls:
-            continue
-        seen_urls.add(href)
-        results.append({"name": a.get_text(strip=True) or href, "url": href, "price_usd": None})
+        for a in soup.find_all("a", href=True):
+            href: str = a["href"]
+            if "/products/" not in href:
+                continue
+            if not href.startswith("http"):
+                href = base + href
+            if href in seen_urls:
+                continue
+            seen_urls.add(href)
+            results.append({"name": a.get_text(strip=True) or href, "url": href, "price_usd": None})
 
-    return results
+        if span is not None:
+            span["attrs"]["items_found"] = len(results)
+        return results

@@ -14,6 +14,8 @@ from app.db.connection import close_pool, init_pool
 from app.db.queries import (
     create_user,
     get_bean_profiles,
+    get_pipeline_trace,
+    get_pipeline_traces,
     get_recommendation_runs,
     get_taste_profile,
     update_bean_profile,
@@ -159,6 +161,44 @@ async def get_recommendations(
 @app.get("/recommendation-runs")
 async def get_recommendation_runs_endpoint(user_id: str = Query(...)):
     return await get_recommendation_runs(user_id)
+
+
+def _summarize_trace(run: dict) -> dict:
+    """
+    Builds a run summary from a stored pipeline trace. Tolerates legacy traces
+    written before spans carried `type`/`attrs` (those count as 0 llm calls).
+    """
+    trace = run.get("trace") or {}
+    spans = trace.get("spans") or []
+    llm_spans = [s for s in spans if s.get("type") == "llm"]
+
+    def tokens(key: str) -> int:
+        return sum((s.get("attrs") or {}).get(key) or 0 for s in llm_spans)
+
+    return {
+        "run_id": run["run_id"],
+        "created_at": run["created_at"],
+        "total_duration_ms": trace.get("total_duration_ms"),
+        "status": "error" if any(s.get("status") == "error" for s in spans) else "ok",
+        "llm_calls": len(llm_spans),
+        "total_input_tokens": tokens("input_tokens"),
+        "total_output_tokens": tokens("output_tokens"),
+        "span_count": len(spans),
+    }
+
+
+@app.get("/traces")
+async def get_traces(user_id: str = Query(...)):
+    runs = await get_pipeline_traces(user_id)
+    return [_summarize_trace(run) for run in runs]
+
+
+@app.get("/traces/{run_id}")
+async def get_trace(run_id: uuid.UUID, user_id: str = Query(...)):
+    run = await get_pipeline_trace(run_id, user_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="trace not found")
+    return run
 
 
 @app.get("/health")

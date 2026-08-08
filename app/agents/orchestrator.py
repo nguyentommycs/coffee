@@ -66,26 +66,27 @@ async def run_recommendations(
 
     trace = TraceLogger(pipeline_id=uuid4(), user_id=user_id)
 
-    with trace.span("profiler"):
-        taste_profile = await profiler.run(user_id, all_profiles)
-    await upsert_taste_profile(taste_profile)
+    with trace.activate():
+        with trace.span("profiler", type="agent", n_beans=len(all_profiles)):
+            taste_profile = await profiler.run(user_id, all_profiles)
+        await upsert_taste_profile(taste_profile)
 
-    with trace.span("recommendation"):
-        candidates = await recommendation.run(taste_profile, n_recommendations=10)
+        with trace.span("recommendation", type="agent", broad_mode=False):
+            candidates = await recommendation.run(taste_profile, n_recommendations=10)
 
-    with trace.span("critic"):
-        final, notes = await critic.run(candidates, taste_profile, n_final=n_final)
-
-    if len(final) < 3:
-        logger.info(
-            "Critic approved only %d candidates; retrying in broad mode", len(final)
-        )
-        with trace.span("recommendation_retry"):
-            candidates = await recommendation.run(
-                taste_profile, n_recommendations=10, broad_mode=True
-            )
-        with trace.span("critic_retry"):
+        with trace.span("critic", type="agent", n_candidates=len(candidates)):
             final, notes = await critic.run(candidates, taste_profile, n_final=n_final)
+
+        if len(final) < 3:
+            logger.info(
+                "Critic approved only %d candidates; retrying in broad mode", len(final)
+            )
+            with trace.span("recommendation_retry", type="agent", broad_mode=True):
+                candidates = await recommendation.run(
+                    taste_profile, n_recommendations=10, broad_mode=True
+                )
+            with trace.span("critic_retry", type="agent", n_candidates=len(candidates)):
+                final, notes = await critic.run(candidates, taste_profile, n_final=n_final)
 
     await insert_recommendation_run(
         user_id=user_id,

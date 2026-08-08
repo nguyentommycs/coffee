@@ -16,6 +16,7 @@ import logging
 
 from app.llm import llm_complete
 from app.models.recommendation import RecommendationCandidate
+from app.observability.trace import child_span
 from app.models.taste_profile import TasteProfile
 from app.tools.scorer import score_candidate
 from app.tools.scraper import scrape_page, scrape_roaster_catalog
@@ -169,16 +170,17 @@ async def run(
         len(candidates), len(roasters), len(roasters),
     )
 
-    for candidate in candidates:
-        candidate_dict = {
-            "origin_country": candidate.origin_country,
-            "process": candidate.process,
-            "roast_level": candidate.roast_level,
-            "tasting_notes": candidate.tasting_notes,
-        }
-        score, rationale = score_candidate(candidate_dict, taste_profile)
-        candidate.match_score = score
-        candidate.match_rationale = rationale
+    with child_span("score_candidates", type="tool", candidates_scored=len(candidates)):
+        for candidate in candidates:
+            candidate_dict = {
+                "origin_country": candidate.origin_country,
+                "process": candidate.process,
+                "roast_level": candidate.roast_level,
+                "tasting_notes": candidate.tasting_notes,
+            }
+            score, rationale = score_candidate(candidate_dict, taste_profile)
+            candidate.match_score = score
+            candidate.match_rationale = rationale
 
     candidates.sort(key=lambda c: c.match_score, reverse=True)
     top = candidates[: n_recommendations * 2]
