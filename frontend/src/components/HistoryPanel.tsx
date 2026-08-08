@@ -4,6 +4,7 @@ import type { FeedbackVerdict, RecommendationCandidate } from '../types'
 import Spinner from './Spinner'
 import CriticNotes from './CriticNotes'
 import RecommendationsTable, { feedbackKey } from './RecommendationsTable'
+import TasteProfileView from './TasteProfileView'
 import { formatCost, relativeTime } from './TraceRunList'
 
 interface Props {
@@ -69,6 +70,12 @@ export default function HistoryPanel({ userId }: Props) {
         <h2>Recommendations</h2>
         {selectedRun ? (
           <>
+            {selectedRun.taste_profile_snapshot && (
+              <details className="history-panel__profile">
+                <summary>Taste profile at time of run</summary>
+                <TasteProfileView profile={selectedRun.taste_profile_snapshot} compact />
+              </details>
+            )}
             <CriticNotes notes={selectedRun.critic_notes} />
             <RecommendationsTable
               recommendations={selectedRun.recommendations}

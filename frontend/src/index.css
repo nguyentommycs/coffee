@@ -785,36 +785,174 @@ main {
   font-size: 1.1em;
 }
 
-.taste-profile-panel__summary {
-  margin: 0 0 1rem;
-  font-size: 0.9em;
-  line-height: 1.6;
-  color: #4a2c1a;
-}
-
 .taste-profile-panel__empty {
   color: #7d5840;
   font-style: italic;
 }
 
-.taste-profile-panel__table {
-  width: 100%;
-  border-collapse: collapse;
+/* Visual taste profile */
+.taste-profile-view {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
   font-size: 0.9em;
 }
 
-.taste-profile-panel__table th,
-.taste-profile-panel__table td {
-  padding: 0.45rem 0.5rem;
-  border-bottom: 1px solid #d4bc9a;
-  text-align: left;
+.taste-profile-view--compact {
+  gap: 0.6rem;
+  font-size: 0.85em;
 }
 
-.taste-profile-panel__table th {
+.taste-profile-view__summary {
+  margin: 0;
+  padding: 0.15rem 0 0.15rem 0.75rem;
+  border-left: 3px solid #c5a47e;
+  font-style: italic;
+  line-height: 1.6;
+  color: #4a2c1a;
+}
+
+.taste-profile-view__group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.taste-profile-view__label {
   color: #7d5840;
   font-weight: 600;
+  font-size: 0.85em;
+  letter-spacing: 0.03em;
+}
+
+.taste-profile-view__empty-value {
+  color: #7d5840;
+  font-style: italic;
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.chip {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(94, 52, 32, 0.08);
+  border: 1px solid #d4bc9a;
+  color: #4a2c1a;
+  font-size: 0.85em;
+  line-height: 1.4;
   white-space: nowrap;
-  padding-right: 1rem;
+}
+
+.chip--strong {
+  background: #5e3420;
+  border-color: #5e3420;
+  color: #f5ede0;
+  font-weight: 600;
+}
+
+.chip--avoided {
+  background: rgba(163, 60, 44, 0.1);
+  border-color: rgba(163, 60, 44, 0.4);
+  color: #a33c2c;
+  text-decoration: line-through;
+}
+
+/* Roast level scale */
+.roast-scale {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.roast-scale__end {
+  color: #7d5840;
+  font-size: 0.8em;
+  white-space: nowrap;
+}
+
+.roast-scale__track {
+  position: relative;
+  flex: 1;
+  max-width: 240px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.roast-scale__track::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: #c5a47e;
+}
+
+.roast-scale__dot {
+  position: relative;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid #c5a47e;
+  background: #f5ede0;
+}
+
+.roast-scale__dot--filled {
+  background: #5e3420;
+  border-color: #5e3420;
+}
+
+.roast-scale__caption {
+  color: #7d5840;
+  font-size: 0.8em;
+}
+
+/* Confidence meter */
+.taste-profile-view__footer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid #d4bc9a;
+}
+
+.confidence-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(94, 52, 32, 0.12);
+  overflow: hidden;
+}
+
+.confidence-bar__fill {
+  height: 100%;
+  border-radius: 999px;
+  background: #5e3420;
+}
+
+/* Taste profile snapshot in history detail */
+.history-panel__profile {
+  margin: 0 0 1rem;
+  padding: 0.6rem 0.75rem;
+  background: #f5ede0;
+  border: 1px solid #d4bc9a;
+  border-radius: 8px;
+}
+
+.history-panel__profile > summary {
+  cursor: pointer;
+  color: #7d5840;
+  font-weight: 600;
+  font-size: 0.9em;
+}
+
+.history-panel__profile[open] > summary {
+  margin-bottom: 0.75rem;
 }
 
 /* Live pipeline progress checklist */
