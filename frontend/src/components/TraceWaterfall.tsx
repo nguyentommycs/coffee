@@ -1,7 +1,7 @@
 import { useTrace } from '../queries'
 import type { TraceSpan } from '../types'
 import Spinner from './Spinner'
-import { formatDuration } from './TraceRunList'
+import { formatCost, formatDuration } from './TraceRunList'
 
 interface Props {
   userId: string
@@ -48,6 +48,23 @@ function buildRows(spans: TraceSpan[]): Row[] {
   return rows
 }
 
+/** Sums cost_usd across spans that carry it; null when none do. */
+function totalCost(spans: TraceSpan[]): number | null {
+  const costs = spans
+    .map(s => s.attrs?.cost_usd)
+    .filter((c): c is number => typeof c === 'number')
+  return costs.length ? costs.reduce((a, b) => a + b, 0) : null
+}
+
+/** Compact "100→20 tok" label for llm spans that recorded token counts. */
+function tokenLabel(span: TraceSpan): string | null {
+  if (span.type !== 'llm') return null
+  const input = span.attrs?.input_tokens
+  const output = span.attrs?.output_tokens
+  if (typeof input !== 'number' || typeof output !== 'number') return null
+  return `${input.toLocaleString()}→${output.toLocaleString()} tok`
+}
+
 export default function TraceWaterfall({ userId, runId, selectedSpanKey, onSelectSpan }: Props) {
   const { data, isLoading, isError } = useTrace(userId, runId)
 
@@ -58,6 +75,7 @@ export default function TraceWaterfall({ userId, runId, selectedSpanKey, onSelec
   if (spans.length === 0) return <p className="empty-state">This run has no spans recorded.</p>
 
   const rows = buildRows(spans)
+  const cost = totalCost(spans)
   const t0 = Math.min(...spans.map(s => s.start ?? 0))
   const totalMs =
     data?.trace?.total_duration_ms ||
@@ -66,7 +84,10 @@ export default function TraceWaterfall({ userId, runId, selectedSpanKey, onSelec
 
   return (
     <div className="trace-waterfall">
-      <div className="trace-waterfall__total">Total {formatDuration(data?.trace?.total_duration_ms)}</div>
+      <div className="trace-waterfall__total">
+        Total {formatDuration(data?.trace?.total_duration_ms)}
+        {cost !== null ? ` · ${formatCost(cost)}` : ''}
+      </div>
       {rows.map(row => {
         const { span } = row
         const left = Math.max(0, Math.min(100, (((span.start ?? 0) - t0) * 1000 * 100) / totalMs))
@@ -87,7 +108,10 @@ export default function TraceWaterfall({ userId, runId, selectedSpanKey, onSelec
                 style={{ left: `${left}%`, width: `${width}%` }}
               />
             </span>
-            <span className="trace-row__duration">{formatDuration(span.duration_ms)}</span>
+            <span className="trace-row__duration">
+              {tokenLabel(span) && <span className="trace-row__tokens">{tokenLabel(span)}</span>}
+              {formatDuration(span.duration_ms)}
+            </span>
           </button>
         )
       })}

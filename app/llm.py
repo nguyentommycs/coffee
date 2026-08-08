@@ -17,6 +17,7 @@ from google.genai import errors, types
 from app.config import settings
 from app.observability.llm_logger import LLMCallRecord
 from app.observability.trace import child_span
+from app.pricing import estimate_cost_usd
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +103,7 @@ async def llm_complete(prompt: str, span: str = "unknown") -> str:
             lines = text.splitlines()
             text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
 
-        input_tokens = output_tokens = None
+        input_tokens = output_tokens = cost_usd = None
         try:
             usage = response.usage_metadata
             record = LLMCallRecord(
@@ -112,10 +113,16 @@ async def llm_complete(prompt: str, span: str = "unknown") -> str:
                 output_tokens=usage.candidates_token_count,
                 latency_ms=round(latency_ms, 2),
                 timestamp=datetime.now(timezone.utc),
+                cost_usd=estimate_cost_usd(
+                    settings.gemini_model,
+                    usage.prompt_token_count,
+                    usage.candidates_token_count,
+                ),
             )
             logger.debug("LLM call: %s", record.model_dump())
             input_tokens = record.input_tokens
             output_tokens = record.output_tokens
+            cost_usd = record.cost_usd
         except Exception:
             pass  # observability must never break the happy path
 
@@ -123,6 +130,7 @@ async def llm_complete(prompt: str, span: str = "unknown") -> str:
             try:
                 trace_span["attrs"]["input_tokens"] = input_tokens
                 trace_span["attrs"]["output_tokens"] = output_tokens
+                trace_span["attrs"]["cost_usd"] = cost_usd
                 trace_span["attrs"]["response"] = _truncate(text)
             except Exception:
                 pass

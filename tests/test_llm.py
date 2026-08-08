@@ -47,6 +47,38 @@ async def test_llm_span_collects_tokens_and_texts():
     assert span["attrs"]["response"] == '{"ok": true}'
 
 
+async def test_llm_span_records_cost_for_known_model():
+    trace = TraceLogger(pipeline_id=uuid.uuid4(), user_id="u1")
+    with (
+        patch("app.llm.settings.gemini_model", "gemini-3.1-flash-lite-preview"),
+        patch("app.llm._get_client", return_value=MagicMock()),
+        patch(
+            "app.llm._generate",
+            return_value=_mock_response("{}", input_tokens=1_000_000, output_tokens=1_000_000),
+        ),
+    ):
+        with trace.activate():
+            await llm_complete("hi", span="profiler")
+
+    span = trace.spans[0]
+    assert span["attrs"]["cost_usd"] == pytest.approx(1.75)
+
+
+async def test_llm_span_cost_is_none_for_unknown_model():
+    trace = TraceLogger(pipeline_id=uuid.uuid4(), user_id="u1")
+    with (
+        patch("app.llm.settings.gemini_model", "gemini-mystery"),
+        patch("app.llm._get_client", return_value=MagicMock()),
+        patch("app.llm._generate", return_value=_mock_response("{}")),
+    ):
+        with trace.activate():
+            await llm_complete("hi", span="profiler")
+
+    span = trace.spans[0]
+    assert span["attrs"]["input_tokens"] == 11
+    assert span["attrs"]["cost_usd"] is None
+
+
 async def test_llm_span_truncates_long_prompt_and_response():
     long_prompt = "x" * 5000
     trace = TraceLogger(pipeline_id=uuid.uuid4(), user_id="u1")
@@ -77,6 +109,7 @@ async def test_llm_span_tolerates_missing_usage_metadata():
     span = trace.spans[0]
     assert span["attrs"]["input_tokens"] is None
     assert span["attrs"]["output_tokens"] is None
+    assert span["attrs"]["cost_usd"] is None
 
 
 async def test_llm_failure_records_error_span():

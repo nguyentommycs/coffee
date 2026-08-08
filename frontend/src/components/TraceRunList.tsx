@@ -20,6 +20,11 @@ export function formatDuration(ms: number | null | undefined): string {
   return ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${Math.round(ms)}ms`
 }
 
+export function formatCost(usd: number | null | undefined): string {
+  if (usd === null || usd === undefined) return '—'
+  return usd < 0.01 ? `$${usd.toFixed(4)}` : `$${usd.toFixed(2)}`
+}
+
 export default function TraceRunList({ userId, selectedRunId, onSelect }: Props) {
   const { data, isLoading, isError } = useTraces(userId)
 
@@ -45,6 +50,9 @@ export default function TraceRunList({ userId, selectedRunId, onSelect }: Props)
             <span className="trace-run-list__meta">
               {run.llm_calls} llm call{run.llm_calls === 1 ? '' : 's'} ·{' '}
               {(run.total_input_tokens + run.total_output_tokens).toLocaleString()} tok
+              {run.total_cost_usd !== null && run.total_cost_usd !== undefined
+                ? ` · ${formatCost(run.total_cost_usd)}`
+                : ''}
             </span>
           </button>
         </li>

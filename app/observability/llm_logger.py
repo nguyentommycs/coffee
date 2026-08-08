@@ -9,3 +9,4 @@ class LLMCallRecord(BaseModel):
     output_tokens: int
     latency_ms: float
     timestamp: datetime
+    cost_usd: float | None = None

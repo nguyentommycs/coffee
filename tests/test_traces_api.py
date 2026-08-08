@@ -22,7 +22,11 @@ MODERN_TRACE = {
         {
             "id": "b1", "parent_id": "a1", "name": "llm:profiler", "type": "llm",
             "start": 1.1, "duration_ms": 800.0, "status": "ok",
-            "attrs": {"input_tokens": 100, "output_tokens": 20, "prompt": "p", "response": "r"},
+            # cost recorded at call time
+            "attrs": {
+                "input_tokens": 100, "output_tokens": 20, "cost_usd": 0.000055,
+                "model": "gemini-3.1-flash-lite-preview", "prompt": "p", "response": "r",
+            },
         },
         {
             "id": "c1", "parent_id": None, "name": "recommendation", "type": "agent",
@@ -31,7 +35,11 @@ MODERN_TRACE = {
         {
             "id": "d1", "parent_id": "c1", "name": "llm:recommendation_extract", "type": "llm",
             "start": 2.5, "duration_ms": 1200.0, "status": "ok",
-            "attrs": {"input_tokens": 5000, "output_tokens": 400},
+            # written before cost_usd existed — priced from model + tokens
+            "attrs": {
+                "input_tokens": 5000, "output_tokens": 400,
+                "model": "gemini-3.1-flash-lite-preview",
+            },
         },
         {
             "id": "e1", "parent_id": "c1", "name": "scrape_page", "type": "tool",
@@ -72,6 +80,30 @@ def test_traces_list_summary(client):
     assert summary["total_input_tokens"] == 5100
     assert summary["total_output_tokens"] == 420
     assert summary["status"] == "error"  # the scrape span errored
+    # 0.000055 recorded on b1 + 0.00185 derived from d1's model + tokens
+    assert summary["total_cost_usd"] == pytest.approx(0.001905)
+
+
+def test_traces_list_cost_is_none_when_no_span_is_costable(client):
+    trace = {
+        "total_duration_ms": 100.0,
+        "spans": [
+            {
+                "id": "b1", "name": "llm:profiler", "type": "llm", "start": 1.0,
+                "duration_ms": 50.0, "status": "ok",
+                # unknown model, no recorded cost
+                "attrs": {"input_tokens": 100, "output_tokens": 20, "model": "gemini-mystery"},
+            },
+        ],
+    }
+    runs = [{"run_id": RUN_ID, "created_at": CREATED_AT, "trace": trace}]
+    with patch("app.main.get_pipeline_traces", new=AsyncMock(return_value=runs)):
+        res = client.get("/traces", params={"user_id": "u1"})
+
+    assert res.status_code == 200
+    (summary,) = res.json()
+    assert summary["llm_calls"] == 1
+    assert summary["total_cost_usd"] is None
 
 
 def test_traces_list_legacy_trace_does_not_crash(client):
@@ -86,6 +118,7 @@ def test_traces_list_legacy_trace_does_not_crash(client):
     assert summary["llm_calls"] == 0
     assert summary["total_input_tokens"] == 0
     assert summary["total_output_tokens"] == 0
+    assert summary["total_cost_usd"] is None
 
 
 def test_traces_list_null_trace_does_not_crash(client):
