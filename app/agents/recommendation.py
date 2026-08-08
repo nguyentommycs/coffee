@@ -2,12 +2,13 @@
 Recommendation Agent.
 
 Given a TasteProfile, scrapes curated roaster catalog pages, extracts structured
-details from each product page via a single LLM call, scores every candidate
-deterministically, and returns a ranked list of RecommendationCandidate objects.
+details for all of a roaster's products via a single batched LLM call per roaster,
+scores every candidate deterministically, and returns a ranked list of
+RecommendationCandidate objects.
 
-Cost ceiling: CANDIDATES_PER_ROASTER × roasters in scope LLM calls per run.
-Normal mode (broad_mode=False): 4 roasters × 10 items = up to 40 LLM calls.
-Broad mode (broad_mode=True):   8 roasters × 10 items = up to 80 LLM calls.
+Cost ceiling: 1 LLM call per roaster in scope (plus a retry on invalid JSON).
+Normal mode (broad_mode=False): 4 roasters = up to 8 LLM calls.
+Broad mode (broad_mode=True):   8 roasters = up to 16 LLM calls.
 """
 import asyncio
 import json
@@ -23,6 +24,10 @@ logger = logging.getLogger(__name__)
 
 CANDIDATES_PER_ROASTER = 10
 
+# Per-product text budget inside a batched prompt — keeps a 10-product prompt
+# a reasonable size even though scrape_page() itself returns up to 12 000 chars.
+BATCH_ITEM_CHAR_LIMIT = 3000
+
 # Single source of truth: (display_name, catalog_url)
 ROASTERS: list[tuple[str, str]] = [
     ("Onyx Coffee Lab",        "https://onyxcoffeelab.com/collections/coffee"),
@@ -36,10 +41,13 @@ ROASTERS: list[tuple[str, str]] = [
 ]
 
 _EXTRACT_PROMPT_TEMPLATE = """\
-You are a coffee data extraction specialist. Given scraped text from a coffee \
-roaster's product page, extract the following fields into a JSON object:
+You are a coffee data extraction specialist. Given scraped text from multiple product \
+pages on {roaster}'s catalog, extract structured fields for EACH product below.
+
+Return a JSON array with one object per product, in the same order given, each shaped as:
 
 {{
+  "url": string,
   "origin_country": string | null,
   "origin_region": string | null,
   "process": "Washed" | "Natural" | "Honey" | "Anaerobic" | null,
@@ -49,19 +57,17 @@ roaster's product page, extract the following fields into a JSON object:
 }}
 
 Rules:
+- "url" must exactly match the product's URL below, so results can be matched back.
 - Only extract information explicitly present in the text. Do not infer or hallucinate.
 - Normalize process names to: Washed, Natural, Honey, or Anaerobic.
 - Normalize roast levels to: Light, Medium-Light, Medium, or Dark.
 - Tasting notes should be lowercase, individual flavor descriptors (e.g., ["peach", "jasmine"]).
 - in_stock: true if page indicates available/add-to-cart, false if sold-out/out-of-stock, null if unclear.
+- Return exactly one object per product listed, even if a product has no extractable data (use nulls).
 - Return only valid JSON. No preamble, no markdown fences.
 
-Product name: {name}
-Roaster: {roaster}
-URL: {url}
-
-Scraped text:
-{text}
+Products:
+{products_block}
 """
 
 _SCHEMA_REMINDER = (
@@ -71,61 +77,42 @@ _SCHEMA_REMINDER = (
 )
 
 
-async def _extract_candidate_details(
-    name: str,
-    url: str,
-    roaster: str,
-    page_text: str,
-) -> dict:
-    """LLM extraction of structured details from a product page. Returns {} on failure."""
-    prompt = _EXTRACT_PROMPT_TEMPLATE.format(
-        name=name,
-        roaster=roaster,
-        url=url,
-        text=page_text or "(no content retrieved)",
-    )
-    raw = await llm_complete(prompt, span="recommendation_extract")
+def _parse_batch_response(raw: str) -> list[dict] | None:
+    """Parses the extraction response, requiring a JSON array. Returns None on failure."""
     try:
-        return json.loads(raw)
+        data = json.loads(raw)
     except json.JSONDecodeError:
+        return None
+    return data if isinstance(data, list) else None
+
+
+async def _extract_roaster_candidates(
+    roaster_name: str,
+    items_with_text: list[tuple[dict, str]],
+) -> dict[str, dict]:
+    """
+    Single batched LLM call covering every product for one roaster.
+    Returns {product_url: extracted_fields}; missing/failed entries are simply absent.
+    """
+    products_block = "\n\n".join(
+        f"### Product {i + 1}\n"
+        f"Name: {item['name']}\n"
+        f"URL: {item['url']}\n"
+        f"Scraped text: {(text or '(no content retrieved)')[:BATCH_ITEM_CHAR_LIMIT]}"
+        for i, (item, text) in enumerate(items_with_text)
+    )
+    prompt = _EXTRACT_PROMPT_TEMPLATE.format(roaster=roaster_name, products_block=products_block)
+
+    raw = await llm_complete(prompt, span="recommendation_extract")
+    parsed = _parse_batch_response(raw)
+    if parsed is None:
         raw2 = await llm_complete(prompt + _SCHEMA_REMINDER, span="recommendation_extract_retry")
-        try:
-            return json.loads(raw2)
-        except json.JSONDecodeError:
-            logger.warning("LLM extraction failed for %s after retry", url)
+        parsed = _parse_batch_response(raw2)
+        if parsed is None:
+            logger.warning("Batched LLM extraction failed for %s after retry", roaster_name)
             return {}
 
-
-async def _process_catalog_item(
-    item: dict,
-    roaster_name: str,
-) -> RecommendationCandidate | None:
-    """Scrape a product page, extract details, and build a RecommendationCandidate."""
-    url: str = item.get("url") or ""
-    name: str = item.get("name") or ""
-    if not url or not name:
-        return None
-
-    logger.debug("Extracting details for %s – %s", roaster_name, name)
-    page_text = await scrape_page(url)
-    details = await _extract_candidate_details(name, url, roaster_name, page_text)
-
-    try:
-        return RecommendationCandidate(
-            name=name,
-            roaster=roaster_name,
-            product_url=url,
-            origin_country=details.get("origin_country"),
-            origin_region=details.get("origin_region"),
-            process=details.get("process"),
-            roast_level=details.get("roast_level"),
-            tasting_notes=details.get("tasting_notes") or [],
-            price_usd=item.get("price_usd"),
-            in_stock=details.get("in_stock"),
-        )
-    except Exception as exc:
-        logger.warning("Failed to build RecommendationCandidate for %s: %s", url, exc)
-        return None
+    return {entry["url"]: entry for entry in parsed if entry.get("url")}
 
 
 async def run(
@@ -142,30 +129,45 @@ async def run(
     roasters = ROASTERS if broad_mode else ROASTERS[:4]
     logger.info("Starting recommendation run (broad_mode=%s, %d roasters)", broad_mode, len(roasters))
 
-    catalog_items: list[tuple[dict, str]] = []
+    candidates: list[RecommendationCandidate] = []
     for roaster_name, catalog_url in roasters:
         items = await scrape_roaster_catalog(catalog_url)
         logger.info("  %s: %d catalog items found", roaster_name, len(items))
-        for item in items[:CANDIDATES_PER_ROASTER]:
-            catalog_items.append((item, roaster_name))
+        items = [it for it in items[:CANDIDATES_PER_ROASTER] if it.get("url") and it.get("name")]
+        if not items:
+            continue
 
-    if not catalog_items:
+        page_texts = await asyncio.gather(*[scrape_page(it["url"]) for it in items])
+        details_by_url = await _extract_roaster_candidates(roaster_name, list(zip(items, page_texts)))
+
+        for item in items:
+            details = details_by_url.get(item["url"], {})
+            try:
+                candidates.append(
+                    RecommendationCandidate(
+                        name=item["name"],
+                        roaster=roaster_name,
+                        product_url=item["url"],
+                        origin_country=details.get("origin_country"),
+                        origin_region=details.get("origin_region"),
+                        process=details.get("process"),
+                        roast_level=details.get("roast_level"),
+                        tasting_notes=details.get("tasting_notes") or [],
+                        price_usd=item.get("price_usd"),
+                        in_stock=details.get("in_stock"),
+                    )
+                )
+            except Exception as exc:
+                logger.warning("Failed to build RecommendationCandidate for %s: %s", item["url"], exc)
+
+    if not candidates:
         logger.warning("No catalog items found across all roasters")
         return []
 
-    catalog_items = catalog_items[:15]
-    logger.info("Processing %d candidates via LLM extraction", len(catalog_items))
-    tasks = [_process_catalog_item(item, roaster_name) for item, roaster_name in catalog_items]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-
-    candidates: list[RecommendationCandidate] = []
-    for result in results:
-        if isinstance(result, RecommendationCandidate):
-            candidates.append(result)
-        elif isinstance(result, Exception):
-            logger.warning("Candidate processing raised: %s", result)
-
-    logger.info("%d/%d candidates extracted successfully", len(candidates), len(catalog_items))
+    logger.info(
+        "%d candidates extracted across %d roasters via %d batched LLM calls",
+        len(candidates), len(roasters), len(roasters),
+    )
 
     for candidate in candidates:
         candidate_dict = {

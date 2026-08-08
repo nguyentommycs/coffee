@@ -12,7 +12,7 @@ dependencies = [
     "uvicorn[standard]",
     "httpx",
     "beautifulsoup4",
-    "google-generativeai>=0.8",
+    "google-genai>=1.0",
     "asyncpg",
     "python-dotenv",
 ]
@@ -22,6 +22,9 @@ dev = [
     "pytest",
     "pytest-asyncio",
 ]
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
