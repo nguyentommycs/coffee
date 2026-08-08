@@ -21,6 +21,9 @@ from app.observability.trace import TraceLogger
 
 logger = logging.getLogger(__name__)
 
+# Below this many critic-approved candidates, run one (and only one) revision round.
+REVISION_THRESHOLD = 3
+
 
 async def parse_and_persist(
     user_id: str,
@@ -54,7 +57,9 @@ async def run_recommendations(
     """
     Run the profiler → recommendation → critic pipeline on existing bean history.
     Raises ValueError if the user has fewer than 2 beans logged.
-    Performs exactly one broad-mode retry if the critic approves fewer than 3 candidates.
+    Performs exactly one revision round if the critic approves fewer than
+    REVISION_THRESHOLD candidates, feeding the critic's objections back to the
+    recommendation agent.
     """
     all_profiles = await get_bean_profiles(user_id)
 
@@ -75,18 +80,41 @@ async def run_recommendations(
             candidates = await recommendation.run(taste_profile, n_recommendations=10)
 
         with trace.span("critic", type="agent", n_candidates=len(candidates)):
-            final, notes = await critic.run(candidates, taste_profile, n_final=n_final)
+            review = await critic.run(candidates, taste_profile, n_final=n_final)
+        final, notes = review.approved, review.critic_notes
 
-        if len(final) < 3:
+        # Bounded self-correction: exactly one revision round, triggered when the
+        # critic prunes below the threshold. The recommendation agent receives the
+        # critic's objections and must avoid candidates with the same flaws.
+        if len(final) < REVISION_THRESHOLD:
             logger.info(
-                "Critic approved only %d candidates; retrying in broad mode", len(final)
+                "Critic approved only %d candidates (%d objections); running one revision round",
+                len(final), len(review.objections),
             )
-            with trace.span("recommendation_retry", type="agent", broad_mode=True):
-                candidates = await recommendation.run(
-                    taste_profile, n_recommendations=10, broad_mode=True
+            reviewed_urls = {str(c.product_url) for c in candidates}
+            with trace.span(
+                "recommendation_revision",
+                type="agent",
+                broad_mode=True,
+                n_objections=len(review.objections),
+            ):
+                revised = await recommendation.run(
+                    taste_profile,
+                    n_recommendations=10,
+                    broad_mode=True,
+                    exclude_urls=reviewed_urls,
+                    objections=review.objections,
                 )
-            with trace.span("critic_retry", type="agent", n_candidates=len(candidates)):
-                final, notes = await critic.run(candidates, taste_profile, n_final=n_final)
+            combined = final + [
+                c for c in revised if str(c.product_url) not in reviewed_urls
+            ]
+            with trace.span(
+                "critic_review_2", type="agent", n_candidates=len(combined)
+            ):
+                review = await critic.run(
+                    combined, taste_profile, n_final=n_final, span_suffix="_2"
+                )
+            final, notes = review.approved, review.critic_notes
 
     await insert_recommendation_run(
         user_id=user_id,
