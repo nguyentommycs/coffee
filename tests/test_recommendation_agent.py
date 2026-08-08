@@ -35,23 +35,28 @@ _CATALOG_ONYX = [
     {"name": "Monarch", "url": "https://onyxcoffeelab.com/products/monarch", "price_usd": 18.0},
 ]
 
-_EXTRACT_MATCH = json.dumps({
+_FIELDS_MATCH = {
     "origin_country": "Ethiopia",
     "origin_region": "Yirgacheffe",
     "process": "Washed",
     "roast_level": "Light",
     "tasting_notes": ["jasmine", "stone fruit", "citrus"],
     "in_stock": True,
-})
+}
 
-_EXTRACT_NO_MATCH = json.dumps({
+_FIELDS_NO_MATCH = {
     "origin_country": "Brazil",
     "origin_region": None,
     "process": "Natural",
     "roast_level": "Dark",
     "tasting_notes": ["dark chocolate", "smoke"],
     "in_stock": True,
-})
+}
+
+
+def _batch_response(urls_and_fields: list[tuple[str, dict]]) -> str:
+    """Builds the batched extraction response for one roaster: a JSON array with url per entry."""
+    return json.dumps([{"url": url, **fields} for url, fields in urls_and_fields])
 
 
 # ---------------------------------------------------------------------------
@@ -67,7 +72,9 @@ async def test_happy_path_returns_scored_candidates(taste_profile):
     ):
         mock_catalog.side_effect = [_CATALOG_ONYX, [], [], []]
         mock_scrape.return_value = "some product page text"
-        mock_llm.return_value = _EXTRACT_MATCH
+        mock_llm.return_value = _batch_response([
+            (item["url"], _FIELDS_MATCH) for item in _CATALOG_ONYX
+        ])
 
         candidates = await run(taste_profile, n_recommendations=5)
 
@@ -84,8 +91,11 @@ async def test_candidates_sorted_by_match_score(taste_profile):
         patch("app.agents.recommendation.llm_complete", new_callable=AsyncMock) as mock_llm,
     ):
         mock_catalog.side_effect = [_CATALOG_ONYX, [], [], []]
-        # Geometry → high match, Monarch → no match
-        mock_llm.side_effect = [_EXTRACT_MATCH, _EXTRACT_NO_MATCH]
+        # Single batched call for Onyx: Geometry → high match, Monarch → no match
+        mock_llm.return_value = _batch_response([
+            ("https://onyxcoffeelab.com/products/geometry", _FIELDS_MATCH),
+            ("https://onyxcoffeelab.com/products/monarch", _FIELDS_NO_MATCH),
+        ])
 
         candidates = await run(taste_profile, n_recommendations=5)
 
@@ -147,7 +157,7 @@ async def test_returns_at_most_n_times_2(taste_profile):
         patch("app.agents.recommendation.llm_complete", new_callable=AsyncMock) as mock_llm,
     ):
         mock_catalog.side_effect = [many_items, [], [], []]
-        mock_llm.return_value = _EXTRACT_MATCH
+        mock_llm.return_value = _batch_response([(item["url"], _FIELDS_MATCH) for item in many_items])
 
         candidates = await run(taste_profile, n_recommendations=5)
 
@@ -169,7 +179,7 @@ async def test_candidates_per_roaster_cap_applied(taste_profile):
         patch("app.agents.recommendation.llm_complete", new_callable=AsyncMock) as mock_llm,
     ):
         mock_catalog.side_effect = [many_items, [], [], []]
-        mock_llm.return_value = _EXTRACT_MATCH
+        mock_llm.return_value = _batch_response([(item["url"], _FIELDS_MATCH) for item in many_items])
 
         await run(taste_profile, n_recommendations=20)
 
@@ -191,7 +201,9 @@ async def test_invalid_url_items_skipped(taste_profile):
             ],
             [], [], [],
         ]
-        mock_llm.return_value = _EXTRACT_MATCH
+        mock_llm.return_value = _batch_response([
+            ("https://onyxcoffeelab.com/products/monarch", _FIELDS_MATCH),
+        ])
 
         candidates = await run(taste_profile)
 
@@ -232,7 +244,9 @@ async def test_match_score_and_rationale_populated(taste_profile):
             [{"name": "Geometry", "url": "https://onyxcoffeelab.com/products/geometry", "price_usd": 22.0}],
             [], [], [],
         ]
-        mock_llm.return_value = _EXTRACT_MATCH
+        mock_llm.return_value = _batch_response([
+            ("https://onyxcoffeelab.com/products/geometry", _FIELDS_MATCH),
+        ])
 
         candidates = await run(taste_profile)
 

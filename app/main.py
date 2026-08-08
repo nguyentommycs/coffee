@@ -1,10 +1,12 @@
+import uuid
 from contextlib import asynccontextmanager
+from typing import Literal, Optional
 
 import asyncpg
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from app.agents.input_parsing import AgentLoopError, LowConfidenceError
 from app.agents.orchestrator import parse_and_persist, run_recommendations
@@ -14,6 +16,7 @@ from app.db.queries import (
     get_bean_profiles,
     get_recommendation_runs,
     get_taste_profile,
+    update_bean_profile,
 )
 from app.models.bean_profile import BeanProfile
 from app.models.recommendation import RecommendationResponse
@@ -53,6 +56,27 @@ class AddBeansRequest(BaseModel):
 class AddBeansResponse(BaseModel):
     parsed: list[BeanProfile]
     skipped: list[str]
+
+
+class UpdateBeanRequest(BaseModel):
+    name: str
+    roaster: str
+    origin_country: Optional[str] = None
+    origin_region: Optional[str] = None
+    farm_or_cooperative: Optional[str] = None
+    process: Optional[Literal["Washed", "Natural", "Honey", "Anaerobic"]] = None
+    variety: Optional[str] = None
+    roast_level: Optional[Literal["Light", "Medium-Light", "Medium", "Dark"]] = None
+    tasting_notes: list[str] = []
+    user_score: Optional[int] = None
+    user_notes: Optional[str] = None
+
+    @field_validator("user_score")
+    @classmethod
+    def score_in_range(cls, v):
+        if v is not None and not (1 <= v <= 10):
+            raise ValueError("user_score must be between 1 and 10")
+        return v
 
 
 @app.exception_handler(AgentLoopError)
@@ -106,6 +130,14 @@ async def post_beans(body: AddBeansRequest):
 @app.get("/beans", response_model=list[BeanProfile])
 async def get_beans(user_id: str = Query(...)):
     return await get_bean_profiles(user_id)
+
+
+@app.patch("/beans/{bean_id}", response_model=BeanProfile)
+async def patch_bean(bean_id: uuid.UUID, body: UpdateBeanRequest, user_id: str = Query(...)):
+    updated = await update_bean_profile(bean_id, user_id, body.model_dump())
+    if updated is None:
+        raise HTTPException(status_code=404, detail="bean not found")
+    return updated
 
 
 @app.get("/profile")

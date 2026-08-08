@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ApiError, addBeans, getBeans, getProfile, getRecommendationRuns, getRecommendations } from './api'
+import type { BeanEditableFields } from './api'
+import { ApiError, addBeans, getBeans, getProfile, getRecommendationRuns, getRecommendations, updateBean } from './api'
 
 export function useBeans(userId: string) {
   return useQuery({
@@ -31,6 +32,17 @@ export function useAddBean(userId: string) {
   return useMutation({
     mutationFn: ({ input, score }: { input: string; score: number }) =>
       addBeans(userId, [input], score),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['beans', userId] })
+    },
+  })
+}
+
+export function useUpdateBean(userId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ beanId, fields }: { beanId: string; fields: BeanEditableFields }) =>
+      updateBean(userId, beanId, fields),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['beans', userId] })
     },

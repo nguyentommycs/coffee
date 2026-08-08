@@ -17,7 +17,7 @@ export default function BeansPanel({ userId }: Props) {
       </div>
       <div className="beans-panel__right">
         <h2>Your beans</h2>
-        {isLoading ? <Spinner /> : <BeanTable beans={beans ?? []} />}
+        {isLoading ? <Spinner /> : <BeanTable userId={userId} beans={beans ?? []} />}
       </div>
     </section>
   )

@@ -286,6 +286,37 @@ main {
   color: #7d5840;
 }
 
+.bean-table__row--editing input[type='text'],
+.bean-table__row--editing input[type='number'],
+.bean-table__row--editing select {
+  width: 100%;
+  max-width: 8rem;
+  font-size: 0.9em;
+  padding: 0.2rem 0.4rem;
+  box-sizing: border-box;
+}
+
+.bean-table__row--editing td {
+  vertical-align: top;
+  white-space: normal;
+}
+
+.bean-table__row--editing input[type='text'] + input[type='text'] {
+  margin-top: 0.25rem;
+}
+
+.bean-table__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 5rem;
+}
+
+.bean-table__actions .inline-error {
+  margin: 0;
+  font-size: 0.8em;
+}
+
 /* Bottom panels — recommendations + taste profile side by side */
 .bottom-panels {
   display: flex;

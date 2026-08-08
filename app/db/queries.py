@@ -71,6 +71,34 @@ async def upsert_bean_profile(profile: BeanProfile) -> None:
     )
 
 
+async def update_bean_profile(bean_id, user_id: str, fields: dict) -> Optional[BeanProfile]:
+    pool = get_pool()
+    row = await pool.fetchrow(
+        """
+        UPDATE bean_profiles SET
+            name = $3, roaster = $4, origin_country = $5, origin_region = $6,
+            farm_or_cooperative = $7, process = $8, variety = $9, roast_level = $10,
+            tasting_notes = $11, user_score = $12, user_notes = $13
+        WHERE id = $1 AND user_id = $2
+        RETURNING *
+        """,
+        bean_id,
+        user_id,
+        fields["name"],
+        fields["roaster"],
+        fields["origin_country"],
+        fields["origin_region"],
+        fields["farm_or_cooperative"],
+        fields["process"],
+        fields["variety"],
+        fields["roast_level"],
+        fields["tasting_notes"],
+        fields["user_score"],
+        fields["user_notes"],
+    )
+    return BeanProfile(**dict(row)) if row else None
+
+
 async def get_bean_profiles(user_id: str) -> list[BeanProfile]:
     pool = get_pool()
     rows = await pool.fetch(
