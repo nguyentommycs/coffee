@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.agents.recommendation import ROASTERS, run
+from app.models.recommendation import CriticObjection
 from app.models.taste_profile import TasteProfile
 
 # ---------------------------------------------------------------------------
@@ -255,3 +256,119 @@ async def test_match_score_and_rationale_populated(taste_profile):
     assert "origin match" in candidates[0].match_rationale
     assert candidates[0].origin_country == "Ethiopia"
     assert candidates[0].process == "Washed"
+
+
+# ---------------------------------------------------------------------------
+# Revision round: exclusions + objection filter
+# ---------------------------------------------------------------------------
+
+_OBJECTIONS = [
+    CriticObjection(
+        candidate_name="Monarch",
+        roaster="Onyx Coffee Lab",
+        product_url="https://onyxcoffeelab.com/products/monarch",
+        reason="too dark-roasted for this profile",
+    )
+]
+
+
+@pytest.mark.asyncio
+async def test_exclude_urls_skips_items(taste_profile):
+    with (
+        patch("app.agents.recommendation.scrape_roaster_catalog", new_callable=AsyncMock) as mock_catalog,
+        patch("app.agents.recommendation.scrape_page", new_callable=AsyncMock) as mock_scrape,
+        patch("app.agents.recommendation.llm_complete", new_callable=AsyncMock) as mock_llm,
+    ):
+        mock_catalog.side_effect = [_CATALOG_ONYX, [], [], []]
+        mock_llm.return_value = _batch_response([
+            ("https://onyxcoffeelab.com/products/monarch", _FIELDS_MATCH),
+        ])
+
+        candidates = await run(
+            taste_profile,
+            exclude_urls={"https://onyxcoffeelab.com/products/geometry"},
+        )
+
+    assert mock_scrape.call_count == 1
+    assert mock_scrape.call_args.args[0] == "https://onyxcoffeelab.com/products/monarch"
+    assert [c.name for c in candidates] == ["Monarch"]
+
+
+@pytest.mark.asyncio
+async def test_objection_filter_drops_flagged_candidates(taste_profile):
+    with (
+        patch("app.agents.recommendation.scrape_roaster_catalog", new_callable=AsyncMock) as mock_catalog,
+        patch("app.agents.recommendation.scrape_page", new_callable=AsyncMock),
+        patch("app.agents.recommendation.llm_complete", new_callable=AsyncMock) as mock_llm,
+    ):
+        mock_catalog.side_effect = [_CATALOG_ONYX, [], [], []]
+        mock_llm.side_effect = [
+            _batch_response([
+                ("https://onyxcoffeelab.com/products/geometry", _FIELDS_MATCH),
+                ("https://onyxcoffeelab.com/products/monarch", _FIELDS_NO_MATCH),
+            ]),
+            json.dumps({"excluded_indices": [0]}),
+        ]
+
+        candidates = await run(taste_profile, objections=_OBJECTIONS)
+
+    # index 0 after sorting is the high-scoring Geometry, which the filter excluded
+    assert [c.name for c in candidates] == ["Monarch"]
+    assert mock_llm.call_args_list[1].kwargs.get("span") == "recommendation_revision_filter"
+
+
+@pytest.mark.asyncio
+async def test_objection_filter_invalid_json_fails_open(taste_profile):
+    with (
+        patch("app.agents.recommendation.scrape_roaster_catalog", new_callable=AsyncMock) as mock_catalog,
+        patch("app.agents.recommendation.scrape_page", new_callable=AsyncMock),
+        patch("app.agents.recommendation.llm_complete", new_callable=AsyncMock) as mock_llm,
+    ):
+        mock_catalog.side_effect = [_CATALOG_ONYX, [], [], []]
+        mock_llm.side_effect = [
+            _batch_response([(item["url"], _FIELDS_MATCH) for item in _CATALOG_ONYX]),
+            "not valid json",
+            "still not valid json",
+        ]
+
+        candidates = await run(taste_profile, objections=_OBJECTIONS)
+
+    assert len(candidates) == 2
+    assert mock_llm.call_args_list[2].kwargs.get("span") == "recommendation_revision_filter_retry"
+
+
+@pytest.mark.asyncio
+async def test_objection_filter_excluding_all_fails_open(taste_profile):
+    with (
+        patch("app.agents.recommendation.scrape_roaster_catalog", new_callable=AsyncMock) as mock_catalog,
+        patch("app.agents.recommendation.scrape_page", new_callable=AsyncMock),
+        patch("app.agents.recommendation.llm_complete", new_callable=AsyncMock) as mock_llm,
+    ):
+        mock_catalog.side_effect = [_CATALOG_ONYX, [], [], []]
+        mock_llm.side_effect = [
+            _batch_response([(item["url"], _FIELDS_MATCH) for item in _CATALOG_ONYX]),
+            json.dumps({"excluded_indices": [0, 1]}),
+        ]
+
+        candidates = await run(taste_profile, objections=_OBJECTIONS)
+
+    assert len(candidates) == 2
+
+
+@pytest.mark.asyncio
+async def test_no_objections_no_filter_call(taste_profile):
+    with (
+        patch("app.agents.recommendation.scrape_roaster_catalog", new_callable=AsyncMock) as mock_catalog,
+        patch("app.agents.recommendation.scrape_page", new_callable=AsyncMock),
+        patch("app.agents.recommendation.llm_complete", new_callable=AsyncMock) as mock_llm,
+    ):
+        mock_catalog.side_effect = [_CATALOG_ONYX, [], [], []]
+        mock_llm.return_value = _batch_response([
+            (item["url"], _FIELDS_MATCH) for item in _CATALOG_ONYX
+        ])
+
+        await run(taste_profile, objections=None)
+
+    assert mock_llm.call_count == 1
+    spans = {call.kwargs.get("span") for call in mock_llm.call_args_list}
+    assert "recommendation_revision_filter" not in spans

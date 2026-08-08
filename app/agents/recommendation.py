@@ -15,7 +15,7 @@ import json
 import logging
 
 from app.llm import llm_complete
-from app.models.recommendation import RecommendationCandidate
+from app.models.recommendation import CriticObjection, RecommendationCandidate
 from app.observability.trace import child_span
 from app.models.taste_profile import TasteProfile
 from app.tools.scorer import score_candidate
@@ -71,6 +71,27 @@ Products:
 {products_block}
 """
 
+_OBJECTION_FILTER_PROMPT_TEMPLATE = """\
+You are revising coffee recommendations after critic feedback. In a previous round, \
+a critic rejected some candidates for these reasons:
+
+{objections_block}
+
+Below are {n_candidates} NEW candidate coffees (0-indexed):
+
+{candidates_json}
+
+Identify which of these new candidates would likely draw the SAME objections from the \
+critic, so they can be excluded before re-review.
+
+Return a JSON object:
+{{
+  "excluded_indices": [int, ...]
+}}
+
+Return only valid JSON. No preamble, no markdown fences.\
+"""
+
 _SCHEMA_REMINDER = (
     "\n\nIMPORTANT: Your previous response was not valid JSON. "
     "Return ONLY a valid JSON object matching the schema above. "
@@ -116,15 +137,76 @@ async def _extract_roaster_candidates(
     return {entry["url"]: entry for entry in parsed if entry.get("url")}
 
 
+async def _filter_by_objections(
+    candidates: list[RecommendationCandidate],
+    objections: list[CriticObjection],
+) -> list[RecommendationCandidate]:
+    """
+    One LLM call that drops new candidates likely to draw the same critic objections.
+    Fails open: on invalid JSON, or if the filter would drop everything, the
+    candidate list is returned unchanged.
+    """
+    objections_block = "\n".join(
+        f"- {o.candidate_name} ({o.roaster}): {o.reason}" for o in objections
+    )
+    candidate_summaries = [
+        {
+            "index": i,
+            "name": c.name,
+            "roaster": c.roaster,
+            "match_score": c.match_score,
+            "match_rationale": c.match_rationale,
+            "tasting_notes": c.tasting_notes,
+        }
+        for i, c in enumerate(candidates)
+    ]
+    prompt = _OBJECTION_FILTER_PROMPT_TEMPLATE.format(
+        objections_block=objections_block,
+        n_candidates=len(candidates),
+        candidates_json=json.dumps(candidate_summaries, indent=2),
+    )
+
+    raw = await llm_complete(prompt, span="recommendation_revision_filter")
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        raw2 = await llm_complete(
+            prompt + _SCHEMA_REMINDER, span="recommendation_revision_filter_retry"
+        )
+        try:
+            data = json.loads(raw2)
+        except json.JSONDecodeError:
+            logger.warning("Objection filter returned invalid JSON after retry; keeping all candidates")
+            return candidates
+
+    excluded = {
+        idx
+        for idx in (data.get("excluded_indices") or [])
+        if isinstance(idx, int) and not isinstance(idx, bool) and 0 <= idx < len(candidates)
+    }
+    kept = [c for i, c in enumerate(candidates) if i not in excluded]
+    if not kept:
+        logger.warning("Objection filter excluded every candidate; keeping all candidates")
+        return candidates
+
+    logger.info("Objection filter dropped %d/%d candidates", len(excluded), len(candidates))
+    return kept
+
+
 async def run(
     taste_profile: TasteProfile,
     n_recommendations: int = 5,
     broad_mode: bool = False,
+    exclude_urls: set[str] | None = None,
+    objections: list[CriticObjection] | None = None,
 ) -> list[RecommendationCandidate]:
     """
     Scrape roaster catalogs, extract and score candidates, return top n_recommendations*2.
 
     broad_mode=True scrapes all 8 roasters; default scrapes the first 4.
+    exclude_urls drops catalog items already reviewed in an earlier round.
+    objections triggers one LLM filter pass that removes candidates likely to
+    draw the same critic objections.
     Returns candidates sorted by match_score descending, capped at n_recommendations * 2.
     """
     roasters = ROASTERS if broad_mode else ROASTERS[:4]
@@ -135,6 +217,8 @@ async def run(
         items = await scrape_roaster_catalog(catalog_url)
         logger.info("  %s: %d catalog items found", roaster_name, len(items))
         items = [it for it in items[:CANDIDATES_PER_ROASTER] if it.get("url") and it.get("name")]
+        if exclude_urls:
+            items = [it for it in items if str(it["url"]) not in exclude_urls]
         if not items:
             continue
 
@@ -183,6 +267,10 @@ async def run(
             candidate.match_rationale = rationale
 
     candidates.sort(key=lambda c: c.match_score, reverse=True)
+
+    if objections:
+        candidates = await _filter_by_objections(candidates, objections)
+
     top = candidates[: n_recommendations * 2]
     logger.info(
         "Returning %d candidates, scores: %s",

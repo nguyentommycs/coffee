@@ -75,23 +75,26 @@ _APPROVE_FIRST_TWO = json.dumps({
 async def test_happy_path(taste_profile):
     with patch("app.agents.critic.llm_complete", new_callable=AsyncMock) as mock_llm:
         mock_llm.return_value = _APPROVE_ALL
-        final, notes = await run(_CANDIDATES, taste_profile, n_final=5)
+        review = await run(_CANDIDATES, taste_profile, n_final=5)
 
-    assert len(final) == 3
-    assert final[0].name == "Geometry"
-    assert final[1].name == "Monarch"
-    assert final[2].name == "Hologram"
-    assert notes != ""
+    assert len(review.approved) == 3
+    assert review.approved[0].name == "Geometry"
+    assert review.approved[1].name == "Monarch"
+    assert review.approved[2].name == "Hologram"
+    assert review.critic_notes != ""
+    assert review.objections == []
     mock_llm.assert_called_once()
+    assert mock_llm.call_args.kwargs.get("span") == "critic"
 
 
 @pytest.mark.asyncio
 async def test_empty_candidates_no_llm_call(taste_profile):
     with patch("app.agents.critic.llm_complete", new_callable=AsyncMock) as mock_llm:
-        final, notes = await run([], taste_profile)
+        review = await run([], taste_profile)
 
-    assert final == []
-    assert notes == _NO_CANDIDATES_NOTES
+    assert review.approved == []
+    assert review.objections == []
+    assert review.critic_notes == _NO_CANDIDATES_NOTES
     mock_llm.assert_not_called()
 
 
@@ -104,11 +107,11 @@ async def test_approved_indices_order_respected(taste_profile):
     })
     with patch("app.agents.critic.llm_complete", new_callable=AsyncMock) as mock_llm:
         mock_llm.return_value = response
-        final, _ = await run(_CANDIDATES, taste_profile, n_final=5)
+        review = await run(_CANDIDATES, taste_profile, n_final=5)
 
-    assert final[0].name == "Hologram"
-    assert final[1].name == "Geometry"
-    assert final[2].name == "Monarch"
+    assert review.approved[0].name == "Hologram"
+    assert review.approved[1].name == "Geometry"
+    assert review.approved[2].name == "Monarch"
 
 
 @pytest.mark.asyncio
@@ -119,23 +122,23 @@ async def test_out_of_range_index_skipped(taste_profile):
     })
     with patch("app.agents.critic.llm_complete", new_callable=AsyncMock) as mock_llm:
         mock_llm.return_value = response
-        final, _ = await run(_CANDIDATES, taste_profile, n_final=5)
+        review = await run(_CANDIDATES, taste_profile, n_final=5)
 
-    assert len(final) == 2
-    assert final[0].name == "Geometry"
-    assert final[1].name == "Monarch"
+    assert len(review.approved) == 2
+    assert review.approved[0].name == "Geometry"
+    assert review.approved[1].name == "Monarch"
 
 
 @pytest.mark.asyncio
 async def test_invalid_json_retry_succeeds(taste_profile):
     with patch("app.agents.critic.llm_complete", new_callable=AsyncMock) as mock_llm:
         mock_llm.side_effect = ["not valid json", _APPROVE_FIRST_TWO]
-        final, notes = await run(_CANDIDATES, taste_profile, n_final=5)
+        review = await run(_CANDIDATES, taste_profile, n_final=5)
 
     assert mock_llm.call_count == 2
     assert mock_llm.call_args_list[1].kwargs.get("span") == "critic_retry"
-    assert len(final) == 2
-    assert notes != ""
+    assert len(review.approved) == 2
+    assert review.critic_notes != ""
 
 
 @pytest.mark.asyncio
@@ -157,11 +160,11 @@ async def test_n_final_respected(taste_profile):
     })
     with patch("app.agents.critic.llm_complete", new_callable=AsyncMock) as mock_llm:
         mock_llm.return_value = response
-        final, _ = await run(_CANDIDATES, taste_profile, n_final=2)
+        review = await run(_CANDIDATES, taste_profile, n_final=2)
 
-    assert len(final) == 2
-    assert final[0].name == "Geometry"
-    assert final[1].name == "Monarch"
+    assert len(review.approved) == 2
+    assert review.approved[0].name == "Geometry"
+    assert review.approved[1].name == "Monarch"
 
 
 @pytest.mark.asyncio
@@ -173,11 +176,11 @@ async def test_single_candidate(taste_profile):
     })
     with patch("app.agents.critic.llm_complete", new_callable=AsyncMock) as mock_llm:
         mock_llm.return_value = response
-        final, notes = await run(single, taste_profile)
+        review = await run(single, taste_profile)
 
-    assert len(final) == 1
-    assert final[0].name == "Geometry"
-    assert notes != ""
+    assert len(review.approved) == 1
+    assert review.approved[0].name == "Geometry"
+    assert review.critic_notes != ""
 
 
 @pytest.mark.asyncio
@@ -188,7 +191,61 @@ async def test_empty_approved_indices_returns_empty(taste_profile):
     })
     with patch("app.agents.critic.llm_complete", new_callable=AsyncMock) as mock_llm:
         mock_llm.return_value = response
-        final, notes = await run(_CANDIDATES, taste_profile)
+        review = await run(_CANDIDATES, taste_profile)
 
-    assert final == []
-    assert "quality" in notes
+    assert review.approved == []
+    assert "quality" in review.critic_notes
+
+
+@pytest.mark.asyncio
+async def test_rejections_parsed_into_objections(taste_profile):
+    response = json.dumps({
+        "approved_indices": [0],
+        "rejections": [
+            {"index": 1, "reason": "too dark-roasted for this profile"},
+            {"index": 2, "reason": "duplicate roaster"},
+        ],
+        "critic_notes": "One approved, two rejected.",
+    })
+    with patch("app.agents.critic.llm_complete", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = response
+        review = await run(_CANDIDATES, taste_profile)
+
+    assert len(review.approved) == 1
+    assert len(review.objections) == 2
+    assert review.objections[0].candidate_name == "Monarch"
+    assert review.objections[0].roaster == "Onyx Coffee Lab"
+    assert review.objections[0].reason == "too dark-roasted for this profile"
+    assert review.objections[1].candidate_name == "Hologram"
+    assert review.objections[1].roaster == "Blue Bottle Coffee"
+    assert review.objections[1].reason == "duplicate roaster"
+
+
+@pytest.mark.asyncio
+async def test_malformed_rejection_entries_skipped(taste_profile):
+    response = json.dumps({
+        "approved_indices": [0],
+        "rejections": [
+            {"index": 99, "reason": "out of range"},
+            {"index": "two", "reason": "not an int"},
+            {"index": 0, "reason": "also approved"},
+            "not a dict",
+            {"index": 1, "reason": "too dark-roasted for this profile"},
+        ],
+        "critic_notes": "Mostly malformed rejections.",
+    })
+    with patch("app.agents.critic.llm_complete", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = response
+        review = await run(_CANDIDATES, taste_profile)
+
+    assert len(review.objections) == 1
+    assert review.objections[0].candidate_name == "Monarch"
+
+
+@pytest.mark.asyncio
+async def test_span_suffix_applied(taste_profile):
+    with patch("app.agents.critic.llm_complete", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = _APPROVE_ALL
+        await run(_CANDIDATES, taste_profile, span_suffix="_2")
+
+    assert mock_llm.call_args.kwargs.get("span") == "critic_2"

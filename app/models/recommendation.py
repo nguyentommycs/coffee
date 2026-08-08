@@ -20,6 +20,19 @@ class RecommendationCandidate(BaseModel):
     match_rationale: str = ""
 
 
+class CriticObjection(BaseModel):
+    candidate_name: str
+    roaster: str
+    product_url: HttpUrl
+    reason: str
+
+
+class CriticReview(BaseModel):
+    approved: list[RecommendationCandidate]
+    objections: list[CriticObjection] = []
+    critic_notes: str = ""
+
+
 class RecommendationResponse(BaseModel):
     user_id: str
     generated_at: datetime = Field(default_factory=datetime.utcnow)
