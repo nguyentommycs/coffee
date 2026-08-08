@@ -21,7 +21,7 @@ pytest tests/test_input_parsing_agent.py
 pytest --integration
 ```
 
-Environment: copy `.env.example` to `.env` and set `DATABASE_URL`, `GOOGLE_API_KEY`, and `BRAVE_API_KEY`. `GEMINI_MODEL` defaults to `gemini-3.1-flash-lite-preview`.
+Environment: copy `.env.example` to `.env` and set `DATABASE_URL`, `GOOGLE_API_KEY`, and `BRAVE_API_KEY`. `GEMINI_MODEL` defaults to `gemini-3.5-flash-lite`.
 
 ## Architecture
 

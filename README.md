@@ -148,7 +148,7 @@ Required `.env` values:
 | `DATABASE_URL` | PostgreSQL connection string |
 | `GOOGLE_API_KEY` | Gemini API key |
 | `BRAVE_API_KEY` | Brave Search API key |
-| `GEMINI_MODEL` | (optional) defaults to `gemini-3.1-flash-lite-preview` |
+| `GEMINI_MODEL` | (optional) defaults to `gemini-3.5-flash-lite` |
 
 ### Frontend
 
