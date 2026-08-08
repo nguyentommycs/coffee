@@ -5,6 +5,12 @@ from datetime import datetime
 from app.models.taste_profile import TasteProfile
 
 
+class ScoreComponent(BaseModel):
+    label: str
+    value: str
+    points: float
+
+
 class RecommendationCandidate(BaseModel):
     name: str
     roaster: str
@@ -18,6 +24,7 @@ class RecommendationCandidate(BaseModel):
     in_stock: Optional[bool] = None
     match_score: float = 0.0
     match_rationale: str = ""
+    score_breakdown: Optional[list[ScoreComponent]] = None
 
 
 class CriticObjection(BaseModel):

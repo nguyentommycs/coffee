@@ -262,9 +262,10 @@ async def run(
                 "roast_level": candidate.roast_level,
                 "tasting_notes": candidate.tasting_notes,
             }
-            score, rationale = score_candidate(candidate_dict, taste_profile)
+            score, rationale, breakdown = score_candidate(candidate_dict, taste_profile)
             candidate.match_score = score
             candidate.match_rationale = rationale
+            candidate.score_breakdown = breakdown
 
     candidates.sort(key=lambda c: c.match_score, reverse=True)
 
