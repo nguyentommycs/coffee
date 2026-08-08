@@ -1,7 +1,11 @@
+import logging
 import time
 import uuid
+from collections.abc import Callable
 from contextlib import contextmanager
 from contextvars import ContextVar
+
+logger = logging.getLogger(__name__)
 
 # Ambient trace context. Set by the orchestrator for the duration of a pipeline run
 # so nested code (llm.py, scraper.py, agents) can attach spans without signature churn.
@@ -10,11 +14,26 @@ _current_span_id: ContextVar[str | None] = ContextVar("current_span_id", default
 
 
 class TraceLogger:
-    def __init__(self, pipeline_id: uuid.UUID, user_id: str):
+    def __init__(
+        self,
+        pipeline_id: uuid.UUID,
+        user_id: str,
+        listener: Callable[[dict], None] | None = None,
+    ):
         self.pipeline_id = pipeline_id
         self.user_id = user_id
         self.spans: list[dict] = []
         self.start_time = time.time()
+        self.listener = listener
+
+    def _emit(self, event: dict) -> None:
+        """Notifies the listener, if any. A listener bug must never break the pipeline."""
+        if self.listener is None:
+            return
+        try:
+            self.listener(event)
+        except Exception:
+            logger.warning("trace listener raised on event %r", event, exc_info=True)
 
     @contextmanager
     def activate(self):
@@ -36,6 +55,7 @@ class TraceLogger:
             "start": span_start,
             "attrs": attrs,
         }
+        self._emit({"phase": "start", "name": name, "type": type})
         token = _current_span_id.set(span["id"])
         try:
             yield span
@@ -48,6 +68,13 @@ class TraceLogger:
             _current_span_id.reset(token)
             span["duration_ms"] = round((time.time() - span_start) * 1000, 2)
             self.spans.append(span)
+            self._emit({
+                "phase": "end",
+                "name": name,
+                "type": type,
+                "status": span.get("status", "error"),
+                "duration_ms": span["duration_ms"],
+            })
 
     def dump(self) -> dict:
         return {

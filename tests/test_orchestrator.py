@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.agents import orchestrator
+from app.observability import progress
 from app.models.bean_profile import BeanProfile
 from app.models.feedback import RecommendationFeedback
 from app.models.recommendation import (
@@ -88,6 +89,13 @@ def mocks():
             "profiler": prof,
             "feedback": feedback,
         }
+
+
+@pytest.fixture(autouse=True)
+def clean_progress_registry():
+    progress._registry.clear()
+    yield
+    progress._registry.clear()
 
 
 def _span_names(insert_mock) -> list[str]:
@@ -210,3 +218,82 @@ async def test_downvoted_urls_are_excluded_and_feedback_reaches_profiler(mocks):
     rec_kwargs = mocks["recommendation"].call_args_list[0].kwargs
     assert rec_kwargs["exclude_urls"] == {down_url}
     assert mocks["profiler"].call_args.kwargs["feedback"] == feedback
+
+
+# ---------------------------------------------------------------------------
+# Live progress reporting
+# ---------------------------------------------------------------------------
+
+def _stages(progress_id: str) -> dict[str, str]:
+    snapshot = progress.get_snapshot(progress_id)
+    return {s["key"]: s["status"] for s in snapshot["stages"]}
+
+
+@pytest.mark.asyncio
+async def test_progress_tracks_happy_path_stages(mocks):
+    approved = [_candidate("a"), _candidate("b"), _candidate("c")]
+    mocks["recommendation"].return_value = approved
+    mocks["critic"].return_value = CriticReview(
+        approved=approved, objections=[], critic_notes="Good set."
+    )
+
+    await orchestrator.run_recommendations("u1", progress_id="p1")
+
+    snapshot = progress.get_snapshot("p1")
+    assert snapshot["finished"] is True
+    assert snapshot["status"] == "ok"
+    assert [s["key"] for s in snapshot["stages"]] == [
+        "profiler", "recommendation", "critic"
+    ]
+    assert all(s["status"] == "done" for s in snapshot["stages"])
+
+
+@pytest.mark.asyncio
+async def test_progress_includes_revision_stages(mocks):
+    round1 = [_candidate("a"), _candidate("b"), _candidate("c")]
+    revised = [_candidate("x"), _candidate("y"), _candidate("z"), _candidate("w")]
+
+    mocks["recommendation"].side_effect = [round1, revised]
+    mocks["critic"].side_effect = [
+        CriticReview(
+            approved=[round1[0]], objections=[_objection("b")], critic_notes="Pruned hard."
+        ),
+        CriticReview(approved=revised, objections=[], critic_notes="Better set."),
+    ]
+
+    await orchestrator.run_recommendations("u1", progress_id="p1")
+
+    snapshot = progress.get_snapshot("p1")
+    assert snapshot["finished"] is True
+    assert snapshot["status"] == "ok"
+    assert [s["key"] for s in snapshot["stages"]] == [
+        "profiler", "recommendation", "critic", "recommendation_revision", "critic_review_2",
+    ]
+    assert all(s["status"] == "done" for s in snapshot["stages"])
+
+
+@pytest.mark.asyncio
+async def test_progress_marks_error_when_an_agent_raises(mocks):
+    mocks["recommendation"].return_value = [_candidate("a")]
+    mocks["critic"].side_effect = RuntimeError("critic exploded")
+
+    with pytest.raises(RuntimeError):
+        await orchestrator.run_recommendations("u1", progress_id="p1")
+
+    snapshot = progress.get_snapshot("p1")
+    assert snapshot["finished"] is True
+    assert snapshot["status"] == "error"
+    assert _stages("p1")["critic"] == "error"
+
+
+@pytest.mark.asyncio
+async def test_no_progress_id_leaves_registry_untouched(mocks):
+    approved = [_candidate("a"), _candidate("b"), _candidate("c")]
+    mocks["recommendation"].return_value = approved
+    mocks["critic"].return_value = CriticReview(
+        approved=approved, objections=[], critic_notes="Good set."
+    )
+
+    await orchestrator.run_recommendations("u1")
+
+    assert progress._registry == {}
