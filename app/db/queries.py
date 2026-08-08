@@ -153,26 +153,37 @@ async def upsert_taste_profile(profile: TasteProfile) -> None:
     )
 
 
+def _jsonb(value):
+    """No JSONB codec is registered on the pool, so jsonb columns arrive as strings."""
+    return json.loads(value) if isinstance(value, str) else value
+
+
 async def get_recommendation_runs(user_id: str) -> list[dict]:
     pool = get_pool()
     rows = await pool.fetch(
         """
-        SELECT id, created_at, critic_notes, recommendations, taste_profile_snapshot
+        SELECT id, created_at, critic_notes, recommendations,
+               taste_profile_snapshot, pipeline_trace
         FROM recommendation_runs
         WHERE user_id = $1
         ORDER BY created_at DESC
         """,
         user_id,
     )
-    return [dict(row) for row in rows]
+    runs = []
+    for row in rows:
+        run = dict(row)
+        for key in ("recommendations", "taste_profile_snapshot", "pipeline_trace"):
+            run[key] = _jsonb(run.get(key))
+        runs.append(run)
+    return runs
 
 
 def _row_to_trace(row) -> dict:
-    raw = row["pipeline_trace"]
     return {
         "run_id": str(row["id"]),
         "created_at": row["created_at"],
-        "trace": json.loads(raw) if isinstance(raw, str) else raw,
+        "trace": _jsonb(row["pipeline_trace"]),
     }
 
 

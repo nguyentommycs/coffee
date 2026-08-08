@@ -7,7 +7,7 @@ interface Props {
   onSelect: (runId: string) => void
 }
 
-function relativeTime(iso: string): string {
+export function relativeTime(iso: string): string {
   const seconds = (Date.now() - new Date(iso).getTime()) / 1000
   if (seconds < 60) return 'just now'
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`

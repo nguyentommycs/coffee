@@ -200,7 +200,40 @@ async def delete_feedback(
 
 @app.get("/recommendation-runs")
 async def get_recommendation_runs_endpoint(user_id: str = Query(...)):
-    return await get_recommendation_runs(user_id)
+    runs = await get_recommendation_runs(user_id)
+    return [
+        {
+            "id": str(run["id"]),
+            "created_at": run["created_at"],
+            "critic_notes": run["critic_notes"],
+            "recommendations": run["recommendations"],
+            "taste_profile_snapshot": run["taste_profile_snapshot"],
+            "total_cost_usd": _trace_cost_usd(run.get("pipeline_trace")),
+        }
+        for run in runs
+    ]
+
+
+def _trace_cost_usd(trace: dict | None) -> float | None:
+    """
+    Total LLM cost for a stored pipeline trace, or None when nothing is priceable
+    (legacy traces without cost or token/model attrs).
+    """
+    spans = (trace or {}).get("spans") or []
+    llm_spans = [s for s in spans if s.get("type") == "llm"]
+
+    def span_cost(span: dict) -> float | None:
+        attrs = span.get("attrs") or {}
+        cost = attrs.get("cost_usd")
+        if cost is not None:
+            return cost
+        # Traces written before costs were recorded: price them from the model + tokens.
+        return estimate_cost_usd(
+            attrs.get("model"), attrs.get("input_tokens"), attrs.get("output_tokens")
+        )
+
+    costs = [c for c in (span_cost(s) for s in llm_spans) if c is not None]
+    return sum(costs) if costs else None
 
 
 def _summarize_trace(run: dict) -> dict:
@@ -215,18 +248,6 @@ def _summarize_trace(run: dict) -> dict:
     def tokens(key: str) -> int:
         return sum((s.get("attrs") or {}).get(key) or 0 for s in llm_spans)
 
-    def span_cost(span: dict) -> float | None:
-        attrs = span.get("attrs") or {}
-        cost = attrs.get("cost_usd")
-        if cost is not None:
-            return cost
-        # Traces written before costs were recorded: price them from the model + tokens.
-        return estimate_cost_usd(
-            attrs.get("model"), attrs.get("input_tokens"), attrs.get("output_tokens")
-        )
-
-    costs = [c for c in (span_cost(s) for s in llm_spans) if c is not None]
-
     return {
         "run_id": run["run_id"],
         "created_at": run["created_at"],
@@ -235,7 +256,7 @@ def _summarize_trace(run: dict) -> dict:
         "llm_calls": len(llm_spans),
         "total_input_tokens": tokens("input_tokens"),
         "total_output_tokens": tokens("output_tokens"),
-        "total_cost_usd": sum(costs) if costs else None,
+        "total_cost_usd": _trace_cost_usd(trace),
         "span_count": len(spans),
     }
 

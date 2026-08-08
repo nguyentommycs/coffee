@@ -1,6 +1,12 @@
 import { clearUsername } from '../auth'
 
-export type View = 'dashboard' | 'traces'
+export type View = 'dashboard' | 'history' | 'traces'
+
+const TAB_LABELS: Record<View, string> = {
+  dashboard: 'Dashboard',
+  history: 'History',
+  traces: 'Traces',
+}
 
 interface Props {
   username: string
@@ -18,13 +24,13 @@ export default function Header({ username, view, onViewChange, onSignOut }: Prop
   return (
     <header className="app-header">
       <nav className="app-header__tabs">
-        {(['dashboard', 'traces'] as View[]).map(tab => (
+        {(['dashboard', 'history', 'traces'] as View[]).map(tab => (
           <button
             key={tab}
             className={`app-header__tab${view === tab ? ' app-header__tab--active' : ''}`}
             onClick={() => onViewChange(tab)}
           >
-            {tab === 'dashboard' ? 'Dashboard' : 'Traces'}
+            {TAB_LABELS[tab]}
           </button>
         ))}
       </nav>

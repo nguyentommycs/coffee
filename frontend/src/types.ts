@@ -98,6 +98,7 @@ export interface RecommendationRun {
   critic_notes: string
   recommendations: RecommendationCandidate[]
   taste_profile_snapshot: TasteProfile
+  total_cost_usd: number | null
 }
 
 export type FeedbackVerdict = 'up' | 'down'
