@@ -23,9 +23,9 @@ def test_perfect_match(profile):
         "origin_country": "Ethiopia",
         "process": "Washed",
         "roast_level": "Light",
-        "tasting_notes": ["stone fruit", "citrus"],
+        "tasting_notes": ["stone fruit", "citrus", "floral"],
     }
-    score, rationale = score_candidate(candidate, profile)
+    score, rationale, _ = score_candidate(candidate, profile)
     assert score == pytest.approx(1.0)
     assert "origin match" in rationale
     assert "process match" in rationale
@@ -40,7 +40,7 @@ def test_no_match(profile):
         "roast_level": "Dark",
         "tasting_notes": ["dark chocolate"],
     }
-    score, rationale = score_candidate(candidate, profile)
+    score, rationale, _ = score_candidate(candidate, profile)
     assert score == 0.0
     assert rationale == "no strong attribute match"
 
@@ -52,9 +52,9 @@ def test_avoided_flavor_penalty(profile):
         "roast_level": "Light",
         "tasting_notes": ["smoke"],
     }
-    score, rationale = score_candidate(candidate, profile)
-    # origin(0.4) + process(0.2) + roast(0.3) - penalty(0.3) = 0.5
-    assert score == pytest.approx(0.6)
+    score, rationale, _ = score_candidate(candidate, profile)
+    # origin(0.3) + process(0.2) + roast(0.2) - penalty(0.15) = 0.55
+    assert score == pytest.approx(0.55)
     assert "avoided flavor present" in rationale
 
 
@@ -65,13 +65,13 @@ def test_partial_match_origin_only(profile):
         "roast_level": "Medium",
         "tasting_notes": [],
     }
-    score, rationale = score_candidate(candidate, profile)
-    assert score == pytest.approx(0.4)
+    score, rationale, _ = score_candidate(candidate, profile)
+    assert score == pytest.approx(0.3)
     assert "origin match" in rationale
 
 
 def test_missing_fields_treated_as_no_match(profile):
-    score, rationale = score_candidate({}, profile)
+    score, rationale, _ = score_candidate({}, profile)
     assert score == 0.0
 
 
@@ -80,7 +80,7 @@ def test_score_rounded_to_3_decimals(profile):
         "origin_country": "Ethiopia",
         "tasting_notes": ["stone fruit"],
     }
-    score, _ = score_candidate(candidate, profile)
+    score, _, _ = score_candidate(candidate, profile)
     assert score == round(score, 3)
 
 
@@ -91,7 +91,7 @@ def test_same_subcategory_partial_credit(profile):
         "roast_level": "Dark",
         "tasting_notes": ["lemon"],
     }
-    score, rationale = score_candidate(candidate, profile)
+    score, rationale, _ = score_candidate(candidate, profile)
     # citrus(fruity,citrus fruit) vs lemon(fruity,citrus fruit) -> same sub -> 0.05
     # stone fruit(fruity,fresh fruit) vs lemon -> same top, diff sub -> 0.025
     # floral vs lemon -> diff top -> 0.0
@@ -106,7 +106,7 @@ def test_same_top_category_partial_credit(profile):
         "roast_level": "Dark",
         "tasting_notes": ["cherry"],
     }
-    score, rationale = score_candidate(candidate, profile)
+    score, rationale, _ = score_candidate(candidate, profile)
     # citrus(fruity,citrus fruit) vs cherry(fruity,berry) -> same top, diff sub -> 0.025
     # stone fruit(fruity,fresh fruit) vs cherry(fruity,berry) -> same top, diff sub -> 0.025
     # floral vs cherry -> diff top -> 0.0
@@ -122,7 +122,7 @@ def test_no_hierarchy_connection_zero(profile):
         "tasting_notes": ["hazelnut"],
     }
     # hazelnut -> (nutty/cocoa, nutty); all affinities are fruity or floral
-    score, rationale = score_candidate(candidate, profile)
+    score, rationale, _ = score_candidate(candidate, profile)
     assert score == pytest.approx(0.0)
     assert rationale == "no strong attribute match"
 
@@ -134,7 +134,7 @@ def test_exact_beats_subcategory(profile):
         "roast_level": "Dark",
         "tasting_notes": ["jasmine", "floral"],
     }
-    score, rationale = score_candidate(candidate, profile)
+    score, rationale, _ = score_candidate(candidate, profile)
     # affinity 'floral': exact match 'floral' -> 0.1 (beats jasmine same-sub 0.05)
     # stone fruit and citrus affinities don't match floral/jasmine
     assert score == pytest.approx(0.1)
@@ -156,7 +156,7 @@ def test_cap_with_partial_credit_only():
     candidate = {"tasting_notes": ["peach"]}
     # peach is (fruity, fresh fruit); all affinities are fruity but diff sub -> 0.025 each
     # 7 * 0.025 = 0.175, under the 0.3 cap
-    score, rationale = score_candidate(candidate, big_profile)
+    score, rationale, _ = score_candidate(candidate, big_profile)
     assert score == pytest.approx(0.175)
     assert "flavor overlap" in rationale
 
@@ -174,5 +174,58 @@ def test_unknown_note_exact_match_still_scores():
         total_beans_logged=1,
         profile_confidence=0.5,
     )
-    score, _ = score_candidate({"tasting_notes": ["bubblegum"]}, profile_unknown)
+    score, _, _ = score_candidate({"tasting_notes": ["bubblegum"]}, profile_unknown)
     assert score == pytest.approx(0.1)
+
+
+def test_breakdown_perfect_match(profile):
+    candidate = {
+        "origin_country": "Ethiopia",
+        "process": "Washed",
+        "roast_level": "Light",
+        "tasting_notes": ["stone fruit", "citrus", "floral"],
+    }
+    score, _, breakdown = score_candidate(candidate, profile)
+    assert len(breakdown) == 4
+    labels = [c.label for c in breakdown]
+    assert labels == ["Origin", "Process", "Roast level", "Flavor overlap"]
+    assert sum(c.points for c in breakdown) == pytest.approx(1.0)
+    assert score == pytest.approx(1.0)
+    assert breakdown[0].value == "Ethiopia"
+
+
+def test_breakdown_avoided_flavor(profile):
+    candidate = {
+        "origin_country": "Ethiopia",
+        "process": "Washed",
+        "roast_level": "Light",
+        "tasting_notes": ["smoke"],
+    }
+    score, _, breakdown = score_candidate(candidate, profile)
+    penalties = [c for c in breakdown if c.points < 0]
+    assert len(penalties) == 1
+    assert penalties[0].points == pytest.approx(-0.15)
+    assert "smoke" in penalties[0].value
+    assert sum(c.points for c in breakdown) == pytest.approx(score)
+
+
+def test_breakdown_empty_for_no_match(profile):
+    candidate = {
+        "origin_country": "Brazil",
+        "process": "Natural",
+        "roast_level": "Dark",
+        "tasting_notes": ["dark chocolate"],
+    }
+    _, _, breakdown = score_candidate(candidate, profile)
+    assert breakdown == []
+
+
+def test_breakdown_points_sum_to_score(profile):
+    candidate = {
+        "origin_country": "Colombia",
+        "process": "Washed",
+        "roast_level": "Medium",
+        "tasting_notes": ["lemon"],
+    }
+    score, _, breakdown = score_candidate(candidate, profile)
+    assert sum(c.points for c in breakdown) == pytest.approx(score)

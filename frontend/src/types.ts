@@ -33,6 +33,12 @@ export interface TasteProfile {
   profile_confidence: number
 }
 
+export interface ScoreComponent {
+  label: string
+  value: string
+  points: number
+}
+
 export interface RecommendationCandidate {
   name: string
   roaster: string
@@ -46,6 +52,7 @@ export interface RecommendationCandidate {
   in_stock?: boolean | null
   match_score: number
   match_rationale: string
+  score_breakdown?: ScoreComponent[] | null
 }
 
 export interface RecommendationResponse {

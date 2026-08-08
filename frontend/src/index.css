@@ -699,6 +699,53 @@ main {
   color: #7d5840;
 }
 
+.score-toggle {
+  background: transparent;
+  border: none;
+  border-bottom: 1px dotted #c5a47e;
+  padding: 0;
+  color: #5e3420;
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+}
+
+.score-toggle:hover {
+  background: rgba(94, 52, 32, 0.09);
+  border-bottom-color: #7a4526;
+}
+
+.score-breakdown-row td {
+  background: rgba(94, 52, 32, 0.05);
+  border-bottom: 1px solid #d4bc9a;
+  font-size: 0.85em;
+  white-space: normal;
+}
+
+.score-breakdown-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.25rem;
+}
+
+.score-breakdown-label {
+  color: #7d5840;
+  font-weight: 600;
+}
+
+.points-pos {
+  color: #3f6b3f;
+  font-weight: 600;
+}
+
+.points-neg {
+  color: #a33c2e;
+  font-weight: 600;
+}
+
 .feedback-btn {
   background: transparent;
   border: 1px solid #c5a47e;
