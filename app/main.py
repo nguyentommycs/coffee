@@ -26,6 +26,7 @@ from app.db.queries import (
 from app.models.bean_profile import BeanProfile
 from app.models.feedback import RecommendationFeedback
 from app.models.recommendation import RecommendationResponse
+from app.observability.progress import get_snapshot
 from app.pricing import estimate_cost_usd
 
 
@@ -167,8 +168,17 @@ async def get_profile(user_id: str = Query(...)):
 async def get_recommendations(
     user_id: str = Query(...),
     n: int = Query(default=5, ge=1, le=20),
+    progress_id: str | None = Query(default=None),
 ):
-    return await run_recommendations(user_id, n_final=n)
+    return await run_recommendations(user_id, n_final=n, progress_id=progress_id)
+
+
+@app.get("/progress/{progress_id}")
+async def get_progress(progress_id: str):
+    snapshot = get_snapshot(progress_id)
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="progress not found")
+    return snapshot
 
 
 @app.post("/feedback", response_model=RecommendationFeedback)

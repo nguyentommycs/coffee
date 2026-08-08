@@ -1,6 +1,7 @@
 import type {
   BeanProfile,
   FeedbackVerdict,
+  PipelineProgress,
   RecommendationFeedback,
   TasteProfile,
   RecommendationResponse,
@@ -76,8 +77,17 @@ export function getProfile(userId: string): Promise<TasteProfile> {
   return request(`/profile?user_id=${encodeURIComponent(userId)}`)
 }
 
-export function getRecommendations(userId: string, n = 5): Promise<RecommendationResponse> {
-  return request(`/recommendations?user_id=${encodeURIComponent(userId)}&n=${n}`)
+export function getRecommendations(
+  userId: string,
+  n = 5,
+  progressId?: string,
+): Promise<RecommendationResponse> {
+  const progressParam = progressId ? `&progress_id=${encodeURIComponent(progressId)}` : ''
+  return request(`/recommendations?user_id=${encodeURIComponent(userId)}&n=${n}${progressParam}`)
+}
+
+export function getProgress(progressId: string): Promise<PipelineProgress> {
+  return request(`/progress/${encodeURIComponent(progressId)}`)
 }
 
 export function getRecommendationRuns(userId: string): Promise<RecommendationRun[]> {

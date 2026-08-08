@@ -18,6 +18,7 @@ from app.db.queries import (
 )
 from app.models.bean_profile import BeanProfile
 from app.models.recommendation import RecommendationResponse
+from app.observability import progress
 from app.observability.trace import TraceLogger
 
 logger = logging.getLogger(__name__)
@@ -54,6 +55,7 @@ async def parse_and_persist(
 async def run_recommendations(
     user_id: str,
     n_final: int = 5,
+    progress_id: str | None = None,
 ) -> RecommendationResponse:
     """
     Run the profiler → recommendation → critic pipeline on existing bean history.
@@ -61,7 +63,30 @@ async def run_recommendations(
     Performs exactly one revision round if the critic approves fewer than
     REVISION_THRESHOLD candidates, feeding the critic's objections back to the
     recommendation agent.
+
+    When progress_id is given, stage-by-stage progress is published to the
+    in-process progress registry for polling via GET /progress/{progress_id}.
     """
+    if progress_id is None:
+        return await _run_recommendations(user_id, n_final, listener=None)
+
+    tracker = progress.start(progress_id)
+    try:
+        response = await _run_recommendations(
+            user_id, n_final, listener=tracker.on_span_event
+        )
+    except Exception:
+        progress.finish(progress_id, "error")
+        raise
+    progress.finish(progress_id, "ok")
+    return response
+
+
+async def _run_recommendations(
+    user_id: str,
+    n_final: int,
+    listener,
+) -> RecommendationResponse:
     all_profiles = await get_bean_profiles(user_id)
 
     if len(all_profiles) < 3:
@@ -73,7 +98,7 @@ async def run_recommendations(
     feedback = await get_recommendation_feedback(user_id)
     downvoted_urls = {fb.product_url for fb in feedback if fb.verdict == "down"}
 
-    trace = TraceLogger(pipeline_id=uuid4(), user_id=user_id)
+    trace = TraceLogger(pipeline_id=uuid4(), user_id=user_id, listener=listener)
 
     with trace.activate():
         with trace.span("profiler", type="agent", n_beans=len(all_profiles)):

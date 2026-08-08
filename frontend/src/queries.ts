@@ -10,6 +10,7 @@ import {
   getBeans,
   getFeedback,
   getProfile,
+  getProgress,
   getRecommendationRuns,
   getRecommendations,
   postFeedback,
@@ -82,11 +83,24 @@ export function useUpdateBean(userId: string) {
 export function useRunRecommendations(userId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (n?: number) => getRecommendations(userId, n),
+    mutationFn: ({ n, progressId }: { n?: number; progressId?: string }) =>
+      getRecommendations(userId, n, progressId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profile', userId] })
       queryClient.invalidateQueries({ queryKey: ['pastRuns', userId] })
     },
+  })
+}
+
+/** Polls pipeline progress while a run is in flight. Pass null to stop polling. */
+export function usePipelineProgress(progressId: string | null) {
+  return useQuery({
+    queryKey: ['pipelineProgress', progressId],
+    queryFn: () => getProgress(progressId as string),
+    enabled: progressId !== null,
+    refetchInterval: 750,
+    retry: false,
+    gcTime: 0,
   })
 }
 

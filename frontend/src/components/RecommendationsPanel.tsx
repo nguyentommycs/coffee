@@ -1,8 +1,14 @@
 import { useState } from 'react'
-import { useBeans, useFeedback, useRunRecommendations, useSetFeedback } from '../queries'
+import {
+  useBeans,
+  useFeedback,
+  usePipelineProgress,
+  useRunRecommendations,
+  useSetFeedback,
+} from '../queries'
 import type { FeedbackVerdict, RecommendationCandidate, RecommendationResponse } from '../types'
-import Spinner from './Spinner'
 import CriticNotes from './CriticNotes'
+import PipelineProgress from './PipelineProgress'
 import RecommendationsTable, { feedbackKey } from './RecommendationsTable'
 
 interface Props {
@@ -15,6 +21,8 @@ export default function RecommendationsPanel({ userId }: Props) {
   const { data: feedbackList } = useFeedback(userId)
   const setFeedback = useSetFeedback(userId)
   const [result, setResult] = useState<RecommendationResponse | null>(null)
+  const [progressId, setProgressId] = useState<string | null>(null)
+  const progressQuery = usePipelineProgress(mutation.isPending ? progressId : null)
 
   const feedback = new Map<string, FeedbackVerdict>(
     (feedbackList ?? []).map(fb => [feedbackKey(fb.roaster, fb.name), fb.verdict]),
@@ -33,7 +41,9 @@ export default function RecommendationsPanel({ userId }: Props) {
   const isDisabled = beanCount < 3 || mutation.isPending
 
   function handleClick() {
-    mutation.mutate(undefined, { onSuccess: data => setResult(data) })
+    const id = crypto.randomUUID()
+    setProgressId(id)
+    mutation.mutate({ progressId: id }, { onSuccess: data => setResult(data) })
   }
 
   return (
@@ -46,13 +56,8 @@ export default function RecommendationsPanel({ userId }: Props) {
         >
           Get recommendations
         </button>
-        {mutation.isPending && (
-          <>
-            <Spinner />
-            <span>Running pipeline — this takes ~30 seconds</span>
-          </>
-        )}
       </div>
+      {mutation.isPending && <PipelineProgress progress={progressQuery.data} />}
       {mutation.isError && (
         <p className="inline-error">Something went wrong. Please try again.</p>
       )}

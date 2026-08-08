@@ -118,3 +118,11 @@ export interface RecommendationFeedback {
   verdict: FeedbackVerdict
   updated_at: string
 }
+
+export type StageStatus = 'running' | 'done' | 'error'
+
+export interface PipelineProgress {
+  finished: boolean
+  status: string
+  stages: { key: string; status: StageStatus; elapsed_ms: number }[]
+}
