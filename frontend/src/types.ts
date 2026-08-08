@@ -56,6 +56,41 @@ export interface RecommendationResponse {
   critic_notes: string
 }
 
+export interface TraceSummary {
+  run_id: string
+  created_at: string
+  total_duration_ms: number | null
+  status: 'ok' | 'error'
+  llm_calls: number
+  total_input_tokens: number
+  total_output_tokens: number
+  span_count: number
+}
+
+/** Fields added after the first traces were persisted are optional — old rows lack them. */
+export interface TraceSpan {
+  id?: string
+  parent_id?: string | null
+  name: string
+  type?: 'agent' | 'llm' | 'tool'
+  start: number
+  duration_ms?: number
+  status?: 'ok' | 'error'
+  error?: string
+  attrs?: Record<string, unknown>
+}
+
+export interface TraceDetail {
+  run_id: string
+  created_at: string
+  trace: {
+    pipeline_id?: string
+    user_id?: string
+    total_duration_ms?: number
+    spans?: TraceSpan[]
+  } | null
+}
+
 export interface RecommendationRun {
   id: string
   created_at: string

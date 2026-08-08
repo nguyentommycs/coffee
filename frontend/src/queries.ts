@@ -1,6 +1,16 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { BeanEditableFields } from './api'
-import { ApiError, addBeans, getBeans, getProfile, getRecommendationRuns, getRecommendations, updateBean } from './api'
+import {
+  ApiError,
+  addBeans,
+  fetchTrace,
+  fetchTraces,
+  getBeans,
+  getProfile,
+  getRecommendationRuns,
+  getRecommendations,
+  updateBean,
+} from './api'
 
 export function useBeans(userId: string) {
   return useQuery({
@@ -24,6 +34,22 @@ export function usePastRuns(userId: string) {
   return useQuery({
     queryKey: ['pastRuns', userId],
     queryFn: () => getRecommendationRuns(userId),
+  })
+}
+
+export function useTraces(userId: string) {
+  return useQuery({
+    queryKey: ['traces', userId],
+    queryFn: () => fetchTraces(userId),
+  })
+}
+
+export function useTrace(userId: string, runId: string | null) {
+  return useQuery({
+    queryKey: ['trace', userId, runId],
+    queryFn: () => fetchTrace(userId, runId as string),
+    enabled: runId !== null,
+    staleTime: Infinity, // traces are immutable once written
   })
 }
 
