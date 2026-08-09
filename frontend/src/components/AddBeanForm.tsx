@@ -1,15 +1,24 @@
 import { useState } from 'react'
 import { ApiError } from '../api'
 import { useAddBean } from '../queries'
+import type { BeanProfile } from '../types'
+import ErrorBanner from './ErrorBanner'
 import Spinner from './Spinner'
 
 interface Props {
   userId: string
 }
 
-function getErrorMessage(error: unknown): string {
+type Mode = 'url' | 'text'
+
+const URL_PATTERN = /^https?:\/\/\S+\.\S+/
+
+function getErrorMessage(error: unknown, mode: Mode): string {
   if (error instanceof ApiError) {
     if (error.status === 422) {
+      if (mode === 'url') {
+        return "We couldn't read that page. Make sure the link points to a roaster's product page."
+      }
       const body = error.body as { fields_missing?: string[] } | null
       const fields = body?.fields_missing
       if (fields && fields.length > 0) {
@@ -25,31 +34,96 @@ function getErrorMessage(error: unknown): string {
 }
 
 export default function AddBeanForm({ userId }: Props) {
+  const [mode, setMode] = useState<Mode>('url')
   const [value, setValue] = useState('')
   const [score, setScore] = useState<number | null>(null)
+  const [hint, setHint] = useState<string | null>(null)
+  const [added, setAdded] = useState<BeanProfile | null>(null)
   const mutation = useAddBean(userId)
 
   const canSubmit = !mutation.isPending && value.trim() !== '' && score !== null
 
+  function switchMode(next: Mode) {
+    if (next === mode) return
+    setMode(next)
+    setValue('')
+    setHint(null)
+    setAdded(null)
+    mutation.reset()
+  }
+
+  function handleChange(next: string) {
+    setValue(next)
+    setHint(null)
+    setAdded(null)
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!canSubmit) return
+    const input = value.trim()
+    if (mode === 'url' && !URL_PATTERN.test(input)) {
+      setHint('That doesn’t look like a link. Paste the full product URL, starting with https://')
+      return
+    }
+    setHint(null)
+    setAdded(null)
     mutation.mutate(
-      { input: value.trim(), score: score! },
-      { onSuccess: () => { setValue(''); setScore(null) } },
+      { input, score: score! },
+      {
+        onSuccess: data => {
+          setValue('')
+          setScore(null)
+          if (mode === 'url') setAdded(data.parsed[0] ?? null)
+        },
+      },
     )
   }
+
+  const noneParsed = mode === 'url' && mutation.isSuccess && added === null
 
   return (
     <form className="add-bean-form" onSubmit={handleSubmit}>
       <h2>Add a bean</h2>
-      <textarea
-        value={value}
-        onChange={e => setValue(e.target.value)}
-        disabled={mutation.isPending}
-        placeholder="Paste a URL, product name, or describe a bean you've tried…"
-        rows={6}
-      />
+
+      <div className="mode-toggle" role="group" aria-label="Input mode">
+        <button
+          type="button"
+          className={mode === 'url' ? 'mode-toggle__option is-active' : 'mode-toggle__option'}
+          onClick={() => switchMode('url')}
+          aria-pressed={mode === 'url'}
+        >
+          From URL
+        </button>
+        <button
+          type="button"
+          className={mode === 'text' ? 'mode-toggle__option is-active' : 'mode-toggle__option'}
+          onClick={() => switchMode('text')}
+          aria-pressed={mode === 'text'}
+        >
+          Describe it
+        </button>
+      </div>
+
+      {mode === 'url' ? (
+        <input
+          className="url-input"
+          type="url"
+          value={value}
+          onChange={e => handleChange(e.target.value)}
+          disabled={mutation.isPending}
+          placeholder="https://roaster.com/products/…"
+        />
+      ) : (
+        <textarea
+          value={value}
+          onChange={e => handleChange(e.target.value)}
+          disabled={mutation.isPending}
+          placeholder="Paste a URL, product name, or describe a bean you've tried…"
+          rows={6}
+        />
+      )}
+
       <div className="score-field">
         <label htmlFor="bean-score">
           Your score{' '}
@@ -75,14 +149,50 @@ export default function AddBeanForm({ userId }: Props) {
           ))}
         </div>
       </div>
+
       <div className="add-bean-form__actions">
         <button type="submit" disabled={!canSubmit}>
-          Add new bean
+          {mode === 'url' ? 'Fetch & add bean' : 'Add new bean'}
         </button>
-        {mutation.isPending && <Spinner />}
+        {mutation.isPending && (
+          <>
+            <Spinner />
+            {mode === 'url' && <span className="pending-note">Fetching the product page…</span>}
+          </>
+        )}
       </div>
+
+      {hint && <p className="inline-error">{hint}</p>}
+
       {mutation.isError && (
-        <p className="inline-error">{getErrorMessage(mutation.error)}</p>
+        <ErrorBanner
+          message={getErrorMessage(mutation.error, mode)}
+          onDismiss={() => mutation.reset()}
+        />
+      )}
+
+      {noneParsed && (
+        <ErrorBanner
+          message="We couldn't read that page. Make sure the link points to a roaster's product page."
+          onDismiss={() => mutation.reset()}
+        />
+      )}
+
+      {added && (
+        <div className="added-bean-card">
+          <h3>{added.name}</h3>
+          <p className="added-bean-card__meta">
+            {[added.roaster, added.origin_country, added.roast_level].filter(Boolean).join(' · ')}
+          </p>
+          {added.tasting_notes.length > 0 && (
+            <ul className="note-chips">
+              {added.tasting_notes.map(note => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          )}
+          <p className="added-bean-card__hint">Something off? Edit it in your beans table.</p>
+        </div>
       )}
     </form>
   )
