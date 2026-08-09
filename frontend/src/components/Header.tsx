@@ -1,9 +1,10 @@
 import { clearUsername } from '../auth'
 
-export type View = 'dashboard' | 'history' | 'traces'
+export type View = 'dashboard' | 'stats' | 'history' | 'traces'
 
 const TAB_LABELS: Record<View, string> = {
   dashboard: 'Dashboard',
+  stats: 'Stats',
   history: 'History',
   traces: 'Traces',
 }
@@ -24,7 +25,7 @@ export default function Header({ username, view, onViewChange, onSignOut }: Prop
   return (
     <header className="app-header">
       <nav className="app-header__tabs">
-        {(['dashboard', 'history', 'traces'] as View[]).map(tab => (
+        {(['dashboard', 'stats', 'history', 'traces'] as View[]).map(tab => (
           <button
             key={tab}
             className={`app-header__tab${view === tab ? ' app-header__tab--active' : ''}`}

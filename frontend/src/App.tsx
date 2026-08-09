@@ -8,6 +8,7 @@ import RecommendationsPanel from './components/RecommendationsPanel'
 import TasteProfilePanel from './components/TasteProfilePanel'
 import TracesPanel from './components/TracesPanel'
 import HistoryPanel from './components/HistoryPanel'
+import StatsPanel from './components/StatsPanel'
 
 export default function App() {
   const [username, setUsername] = useState<string | null>(() => getUsername())
@@ -28,6 +29,8 @@ export default function App() {
       <main>
         {view === 'traces' ? (
           <TracesPanel userId={username} />
+        ) : view === 'stats' ? (
+          <StatsPanel userId={username} />
         ) : view === 'history' ? (
           <HistoryPanel userId={username} />
         ) : (
