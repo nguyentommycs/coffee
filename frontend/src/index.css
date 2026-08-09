@@ -1243,3 +1243,135 @@ main {
   color: #7d5840;
   text-decoration: line-through;
 }
+
+/* Stats */
+.stats-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 1.5rem;
+}
+
+.stats-panel__tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.stat-tile {
+  flex: 1 1 140px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  background: #f5ede0;
+  border: 1.5px solid #c5a47e;
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+}
+
+.stat-tile__value {
+  font-size: 1.6em;
+  font-weight: 600;
+  color: #5e3420;
+  line-height: 1.1;
+}
+
+.stat-tile__label {
+  font-size: 0.85em;
+  color: #7d5840;
+}
+
+.stats-section {
+  background: #f5ede0;
+  border: 1.5px solid #c5a47e;
+  border-radius: 10px;
+  padding: 1.25rem;
+  overflow: hidden;
+}
+
+.stats-section h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.1em;
+}
+
+.bar-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.bar-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.9em;
+  color: #2c1810;
+}
+
+.bar-row__label {
+  flex: 0 0 9rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bar-row__track {
+  flex: 1;
+  min-width: 0;
+  height: 0.75rem;
+  border-radius: 999px;
+  background: rgba(94, 52, 32, 0.08);
+  border: 1px solid #d4bc9a;
+  overflow: hidden;
+}
+
+.bar-row__fill {
+  display: block;
+  height: 100%;
+  background: #5e3420;
+  border-radius: 999px;
+}
+
+.bar-row__count {
+  flex: 0 0 2.5rem;
+  text-align: right;
+  color: #7d5840;
+  font-variant-numeric: tabular-nums;
+}
+
+.flavor-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.flavor-chip--t1 {
+  font-size: 0.8em;
+}
+
+.flavor-chip--t2 {
+  font-size: 0.95em;
+}
+
+.flavor-chip--t3 {
+  font-size: 1.1em;
+  border-color: #c5a47e;
+  background: rgba(94, 52, 32, 0.14);
+}
+
+.flavor-chip--t4 {
+  font-size: 1.25em;
+  background: #5e3420;
+  border-color: #5e3420;
+  color: #f5ede0;
+  font-weight: 600;
+}
+
+.stats-panel__missing {
+  margin: 0.6rem 0 0;
+  font-size: 0.85em;
+  color: #7d5840;
+}
