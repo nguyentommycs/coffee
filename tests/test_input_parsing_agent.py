@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 
-from app.agents.input_parsing import AgentLoopError, LLMOutputError, run
+from app.agents.input_parsing import AgentLoopError, LLMOutputError, LowConfidenceError, run
 from app.tools.search import SearchResult
 
 ONYX_URL = "https://onyxcoffeelab.com/products/geometry"
@@ -174,6 +174,7 @@ async def test_url_scrape_404_falls_back_to_search():
 
 @pytest.mark.asyncio
 async def test_empty_scrape_low_confidence():
+    """A URL whose page text never comes back must not persist a junk bean."""
     with (
         patch("app.agents.input_parsing.scrape_page", new_callable=AsyncMock) as mock_scrape,
         patch("app.agents.input_parsing.llm_complete", new_callable=AsyncMock) as mock_llm,
@@ -196,10 +197,43 @@ async def test_empty_scrape_low_confidence():
             "missing_fields": [],
         })
 
-        profile = await run(ONYX_URL, "user1")
+        with pytest.raises(LowConfidenceError) as excinfo:
+            await run(ONYX_URL, "user1")
 
-    assert profile.confidence <= 0.1
-    assert "origin_country" in profile.missing_fields
+    assert excinfo.value.input_raw == ONYX_URL
+    assert excinfo.value.missing_fields
+    assert "origin_country" in excinfo.value.missing_fields
+
+
+@pytest.mark.asyncio
+async def test_url_non_product_page_raises_low_confidence():
+    """Page text exists but is not a coffee product page -> LowConfidenceError."""
+    with (
+        patch("app.agents.input_parsing.scrape_page", new_callable=AsyncMock) as mock_scrape,
+        patch("app.agents.input_parsing.llm_complete", new_callable=AsyncMock) as mock_llm,
+        patch("app.agents.input_parsing.web_search", new_callable=AsyncMock) as mock_search,
+    ):
+        mock_scrape.return_value = "404 Page not found. Continue shopping."
+        mock_search.return_value = [_SEARCH_RESULT]
+        mock_llm.return_value = json.dumps({
+            "name": "",
+            "roaster": "",
+            "origin_country": None,
+            "origin_region": None,
+            "farm_or_cooperative": None,
+            "process": None,
+            "variety": None,
+            "roast_level": None,
+            "tasting_notes": [],
+            "confidence": 0.05,
+            "missing_fields": ["name", "roaster", "origin_country"],
+        })
+
+        with pytest.raises(LowConfidenceError) as excinfo:
+            await run(ONYX_URL, "user1")
+
+    assert excinfo.value.input_raw == ONYX_URL
+    assert "name" in excinfo.value.missing_fields
 
 
 @pytest.mark.asyncio

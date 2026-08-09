@@ -516,6 +516,93 @@ main {
   box-sizing: border-box;
 }
 
+.add-bean-form .url-input {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.95em;
+  border-radius: 6px;
+  border: 1px solid #c5a47e;
+  background: #ece6dc;
+  color: #2c1810;
+  font-family: inherit;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.mode-toggle {
+  display: inline-flex;
+  align-self: flex-start;
+  border: 1px solid #c5a47e;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.mode-toggle__option {
+  padding: 0.3rem 0.75rem;
+  font-size: 0.85em;
+  font-family: inherit;
+  border: none;
+  background: #ece6dc;
+  color: #7d5840;
+  cursor: pointer;
+}
+
+.mode-toggle__option + .mode-toggle__option {
+  border-left: 1px solid #c5a47e;
+}
+
+.mode-toggle__option.is-active {
+  background: #5e3420;
+  color: #ece6dc;
+}
+
+.pending-note {
+  font-size: 0.85em;
+  color: #7d5840;
+}
+
+.added-bean-card {
+  border: 1px solid #c5a47e;
+  border-radius: 6px;
+  background: #ece6dc;
+  padding: 0.75rem;
+}
+
+.added-bean-card h3 {
+  margin: 0;
+  font-size: 1em;
+  color: #5e3420;
+}
+
+.added-bean-card__meta {
+  margin: 0.25rem 0 0;
+  font-size: 0.85em;
+  color: #7d5840;
+}
+
+.added-bean-card__hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.8em;
+  color: #7d5840;
+  font-style: italic;
+}
+
+.note-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+}
+
+.note-chips li {
+  font-size: 0.78em;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid #c5a47e;
+  color: #5e3420;
+}
+
 .score-field {
   display: flex;
   flex-direction: column;

@@ -65,6 +65,8 @@ Rules:
 - Tasting notes should be lowercase, individual flavor descriptors \
 (e.g., ["peach", "jasmine", "brown sugar"]).
 - confidence reflects how complete and unambiguous the extracted data is.
+- If the text is not a coffee product page (error page, empty, unrelated content), \
+return an empty string for name and confidence 0.0.
 - missing_fields lists the field names (as strings) that could not be extracted.
 - Return only valid JSON. No preamble, no markdown fences.
 
@@ -215,6 +217,24 @@ def _build_profile(
     )
 
 
+def _url_result_is_junk(profile: BeanProfile, any_page_text: bool) -> bool:
+    """True when a URL input produced nothing real worth persisting."""
+    if not any_page_text:
+        return True
+    if profile.confidence < 0.3:
+        return True
+    name = (profile.name or "").strip()
+    return not name or name == profile.input_raw.strip()
+
+
+def _low_confidence_error(profile: BeanProfile, raw_input: str) -> LowConfidenceError:
+    return LowConfidenceError(
+        f"Could not extract a coffee product from URL: {raw_input!r}",
+        missing_fields=profile.missing_fields or ["name", "roaster", "origin_country"],
+        input_raw=raw_input,
+    )
+
+
 async def run(raw_input: str, user_id: str, user_score: int | None = None) -> BeanProfile:
     """
     Parse a single raw input string into a BeanProfile.
@@ -223,6 +243,7 @@ async def run(raw_input: str, user_id: str, user_score: int | None = None) -> Be
     """
     input_type = detect_input_type(raw_input)
     last_profile: BeanProfile | None = None
+    any_page_text = False
 
     for iteration in range(MAX_ITERATIONS):
         if iteration == 0:
@@ -236,10 +257,14 @@ async def run(raw_input: str, user_id: str, user_score: int | None = None) -> Be
             page_text = await scrape_page(url) if url else ""
             broader = True
 
+        any_page_text = any_page_text or bool(page_text)
+
         try:
             data = await _extract_bean_schema(page_text, url, raw_input)
         except LLMOutputError:
             if last_profile is not None:
+                if input_type == "url" and _url_result_is_junk(last_profile, any_page_text):
+                    raise _low_confidence_error(last_profile, raw_input)
                 return last_profile
             raise
 
@@ -248,6 +273,8 @@ async def run(raw_input: str, user_id: str, user_score: int | None = None) -> Be
 
         needs_retry = profile.confidence < 0.6 or len(profile.missing_fields) > 3
         if not needs_retry or broader:
+            if input_type == "url" and _url_result_is_junk(profile, any_page_text):
+                raise _low_confidence_error(profile, raw_input)
             return profile
 
         logger.info(
