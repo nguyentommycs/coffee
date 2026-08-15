@@ -72,7 +72,10 @@ export default function BeanTable({ userId, beans }: Props) {
   }
 
   return (
-    <div className="bean-table-wrapper">
+    <div
+      className={`bean-table-wrapper${beans.length > 5 ? ' bean-table-wrapper--scrollable' : ''}`}
+      aria-label="Your beans"
+    >
       <table className="bean-table">
         <thead>
           <tr>

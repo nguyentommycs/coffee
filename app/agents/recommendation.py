@@ -25,6 +25,10 @@ logger = logging.getLogger(__name__)
 
 CANDIDATES_PER_ROASTER = 10
 
+# Subscription products are not one-off bags, even when their coffee details
+# otherwise match the user's profile.
+EXCLUDED_PRODUCT_URL_TERMS = ("subscription",)
+
 # Per-product text budget inside a batched prompt — keeps a 10-product prompt
 # a reasonable size even though scrape_page() itself returns up to 12 000 chars.
 BATCH_ITEM_CHAR_LIMIT = 3000
@@ -106,6 +110,12 @@ def _parse_batch_response(raw: str) -> list[dict] | None:
     except json.JSONDecodeError:
         return None
     return data if isinstance(data, list) else None
+
+
+def _is_excluded_product_url(url: object) -> bool:
+    """Return whether a catalog URL is for a product we never recommend."""
+    normalized_url = str(url).casefold()
+    return any(term in normalized_url for term in EXCLUDED_PRODUCT_URL_TERMS)
 
 
 async def _extract_roaster_candidates(
@@ -216,7 +226,13 @@ async def run(
     for roaster_name, catalog_url in roasters:
         items = await scrape_roaster_catalog(catalog_url)
         logger.info("  %s: %d catalog items found", roaster_name, len(items))
-        items = [it for it in items[:CANDIDATES_PER_ROASTER] if it.get("url") and it.get("name")]
+        items = [
+            it
+            for it in items
+            if it.get("url")
+            and it.get("name")
+            and not _is_excluded_product_url(it["url"])
+        ][:CANDIDATES_PER_ROASTER]
         if exclude_urls:
             items = [it for it in items if str(it["url"]) not in exclude_urls]
         if not items:

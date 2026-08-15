@@ -372,3 +372,47 @@ async def test_no_objections_no_filter_call(taste_profile):
     assert mock_llm.call_count == 1
     spans = {call.kwargs.get("span") for call in mock_llm.call_args_list}
     assert "recommendation_revision_filter" not in spans
+
+
+@pytest.mark.asyncio
+async def test_subscription_urls_are_excluded_before_candidate_limit(taste_profile):
+    subscription = {
+        "name": "Roaster's Choice Subscription",
+        "url": "https://onyxcoffeelab.com/products/Coffee-Subscription",
+        "price_usd": 20.0,
+    }
+    bags = [
+        {
+            "name": f"Bean {i}",
+            "url": f"https://onyxcoffeelab.com/products/bean-{i}",
+            "price_usd": 20.0,
+        }
+        for i in range(10)
+    ]
+
+    with (
+        patch(
+            "app.agents.recommendation.scrape_roaster_catalog",
+            new_callable=AsyncMock,
+        ) as mock_catalog,
+        patch(
+            "app.agents.recommendation.scrape_page",
+            new_callable=AsyncMock,
+        ) as mock_scrape,
+        patch(
+            "app.agents.recommendation.llm_complete",
+            new_callable=AsyncMock,
+        ) as mock_llm,
+    ):
+        mock_catalog.side_effect = [[subscription, *bags], [], [], []]
+        mock_scrape.return_value = "some product page text"
+        mock_llm.return_value = _batch_response(
+            [(item["url"], _FIELDS_MATCH) for item in bags]
+        )
+
+        candidates = await run(taste_profile, n_recommendations=10)
+
+    assert len(candidates) == 10
+    assert all("subscription" not in str(c.product_url).casefold() for c in candidates)
+    scraped_urls = [call.args[0] for call in mock_scrape.await_args_list]
+    assert subscription["url"] not in scraped_urls
