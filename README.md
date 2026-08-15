@@ -1,132 +1,83 @@
 # Coffee Agent
 
-A multi-agent coffee bean recommender. You log beans you've tried (a roaster URL, a name, or a freeform sentence), and the system parses each one into structured data, builds a persistent taste profile, scrapes real roaster catalogs, and returns ranked recommendations — with an LLM critic gating the final list for quality.
+Coffee Agent is a full-stack coffee recommender that turns a user's coffee history into a taste profile, searches live roaster catalogs, and returns reviewed recommendations. It pairs deterministic scoring with LLM extraction and qualitative review, while preserving recommendation history, feedback, live progress, and per-run traces.
 
-The interesting part isn't the coffee. It's the architecture: four cooperating agents, two of them running ReAct tool-use loops, a deterministic scoring rubric, and an evaluator-critic pattern that can trigger a broad-mode retry when the recommendations aren't strong enough.
+## Product
 
-## Demo
+![Coffee Agent dashboard](docs/images/dashboard.png)
 
-[![Coffee Agent UI](./demo_image.PNG)](https://www.youtube.com/watch?v=CHNca8DlL3M)
+The dashboard lets a user log beans from a product URL, a coffee name, or free-form text; edit the extracted details and score; generate recommendations; and give each recommendation a thumbs-up or thumbs-down. The app also includes Stats, History, and Traces views.
 
-▶ [Watch the demo on YouTube](https://www.youtube.com/watch?v=CHNca8DlL3M)
+![Coffee Agent traces view](docs/images/traces.png)
+
+The Traces view records each recommendation run as an inspectable waterfall, including agent and tool spans, token counts, durations, and estimated LLM cost.
 
 ## What it does
 
-1. **Log a bean** — paste a roaster product URL, a bean name (e.g. "Onyx Geometry"), or freeform text ("the natural Ethiopian I had at Verve").
-2. **Parse** — the Input Parsing Agent resolves the input, scrapes the source page, and extracts a typed `BeanProfile` (origin, process, roast level, tasting notes, confidence score).
-3. **Profile** — the Profiler Agent reads the user's full bean history and produces a `TasteProfile` (preferred origins, processes, roast levels, flavor affinities, avoided flavors, narrative summary).
-4. **Recommend** — the Recommendation Agent searches a curated list of roaster catalogs, scores each candidate against the taste profile, and over-fetches 10 candidates.
-5. **Critique** — the Critic Agent prunes low-quality matches, enforces roaster diversity, and returns the final ranked list. If fewer than 3 candidates survive, the orchestrator triggers a broad-mode retry.
+1. **Log beans.** The parser resolves a URL, name, or free-form description into a typed `BeanProfile`. Logged beans can be edited and rated from 1 to 10.
+2. **Build a taste profile.** The Profiler analyzes at least three saved beans, weighting high and low scores differently and incorporating recommendation feedback.
+3. **Search and score catalog coffees.** The Recommendation Agent scrapes curated roaster catalogs, extracts product details in batches, and scores candidates with a deterministic rubric.
+4. **Review recommendations.** The Critic removes weak fits, limits any roaster to two results, and supplies a concise explanation of the final set.
+5. **Learn from feedback.** Downvoted coffees are excluded from future runs; both positive and negative feedback are included in the next profile generation.
 
 ## How it works
 
-### Pipeline at a glance
-
 ```mermaid
 flowchart LR
-  U[User Input<br/>URL · name · freeform] --> IP[Input Parsing Agent<br/>ReAct loop]
-  IP -->|BeanProfile| DB[(Postgres<br/>bean history)]
-  DB --> P[Profiler Agent<br/>single LLM call]
-  P -->|TasteProfile| R[Recommendation Agent<br/>ReAct loop]
-  R -->|10 candidates| C[Critic Agent<br/>single LLM call]
-  C -->|approved ≥ 3| Out[Ranked Recommendations]
-  C -. approved &lt; 3 .-> R
+  U[User input] --> I[Input parser]
+  I --> B[(Postgres bean history)]
+  B --> P[Profiler]
+  P --> R[Recommendation agent]
+  R --> S[Deterministic scorer]
+  S --> C[Critic]
+  C --> O[Ranked recommendations]
+  O --> F[User feedback]
+  F --> P
+  C -. fewer than 3 approved .-> R
 ```
 
-Sequencing, retries, and trace spans are pure Python in [`app/agents/orchestrator.py`](app/agents/orchestrator.py) — no LLM call.
+The orchestrator in [`app/agents/orchestrator.py`](app/agents/orchestrator.py) owns sequencing, persistence, progress reporting, tracing, and one bounded revision round. It does not make LLM calls itself.
 
-### The four agents
+### Agents and control flow
 
-| Agent | Role | LLM pattern | Tools | I/O |
-|---|---|---|---|---|
-| **Input Parsing** ([`input_parsing.py`](app/agents/input_parsing.py)) | Resolve raw input → structured `BeanProfile` | ReAct loop, max 5 iterations | `detect_input_type`, `web_search`, `scrape_page` | `str` → `BeanProfile` |
-| **Profiler** ([`profiler.py`](app/agents/profiler.py)) | Aggregate full bean history into a taste profile | Single LLM call | — | `list[BeanProfile]` → `TasteProfile` |
-| **Recommendation** ([`recommendation.py`](app/agents/recommendation.py)) | Search roaster catalogs, score candidates | ReAct loop with `broad_mode` flag | `web_search`, `scrape_roaster_catalog`, `score_candidate` | `TasteProfile` → `list[RecommendationCandidate]` |
-| **Critic** ([`critic.py`](app/agents/critic.py)) | Prune, diversify, and rank final list | Single LLM call | — | `list[Candidate]` → pruned list + `critic_notes` |
+| Component | What it does | LLM use |
+|---|---|---|
+| **Input Parsing** ([`input_parsing.py`](app/agents/input_parsing.py)) | Detects the input type, searches/scrapes a source, and extracts a `BeanProfile`. Low-confidence results may retry with a broader search. | Structured extraction; invalid JSON gets one retry per attempt. |
+| **Profiler** ([`profiler.py`](app/agents/profiler.py)) | Converts bean history and recommendation feedback into a `TasteProfile`. | One structured call, with one JSON retry. |
+| **Recommendation** ([`recommendation.py`](app/agents/recommendation.py)) | Scrapes roaster catalogs, batch-extracts product details, scores each candidate, and filters revision candidates against critic objections. | One batch extraction per roaster, with a JSON retry when needed; an optional objection-filter call during revision. |
+| **Critic** ([`critic.py`](app/agents/critic.py)) | Prunes and reranks candidates, enforces diversity, and explains the set. | One structured call, with one JSON retry. |
 
-### ReAct loop mechanics
+The input parser has a maximum of five attempts. Recommendation runs start with four roasters and examine all eight on a revision round. If the Critic approves fewer than three candidates, the orchestrator makes exactly one broader retry: it excludes coffees already reviewed and passes the Critic's objections to the Recommendation Agent before a second review.
 
-The two agents that need real tool use (Input Parsing and Recommendation) implement a bounded ReAct loop. The Input Parsing flow:
+### Deterministic scoring
 
-```mermaid
-sequenceDiagram
-  participant O as Orchestrator
-  participant A as Input Parsing Agent
-  participant T as Tools
-  participant L as Gemini
-  O->>A: run(raw_input, user_id)
-  loop up to MAX_ITERATIONS = 5
-    A->>T: detect_input_type / web_search / scrape_page
-    T-->>A: tool result
-    A->>L: extract_bean_schema(scraped_text)
-    L-->>A: JSON (fields + confidence + missing_fields)
-    alt confidence ≥ 0.6
-      A-->>O: BeanProfile
-    else low confidence
-      A->>A: retry with broader search query
-    end
-  end
-  A-->>O: AgentLoopError (caller adds input to "skipped")
-```
-
-Three things are worth noting:
-
-- **Bounded iteration.** `MAX_ITERATIONS = 5` per agent, raised as `AgentLoopError` on overrun. The orchestrator catches per-input and continues — one bad URL doesn't kill a batch.
-- **Structured output, not freeform.** Every LLM call ends with `"Return only valid JSON. No preamble, no markdown fences."` The wrapper in [`app/llm.py`](app/llm.py) strips fences if the model wraps its output anyway, enforces a 1 s rate-limit window, and retries once on HTTP 429.
-- **Confidence as a control signal.** Low-confidence parses trigger a retry with a broader query rather than failing closed.
-
-### Critic / evaluator pattern
-
-Recommendation and Critic are intentionally split:
-
-```mermaid
-flowchart TD
-  R[Recommendation Agent<br/>over-fetches 10 candidates] --> C{Critic Agent}
-  C -->|approved ≥ 3| Final[Return top n_final]
-  C -->|approved &lt; 3| Retry[Recommendation broad_mode=True<br/>relax origin/process]
-  Retry --> C2{Critic Agent}
-  C2 --> Final
-```
-
-Why this split matters:
-
-- **Decoupled quality gate.** The Recommendation Agent optimizes for recall (find candidates that match the rubric); the Critic optimizes for precision (would a barista actually hand you this bean?). Coupling them into one prompt regresses both.
-- **Diversity enforcement.** The Critic caps any single roaster at 2 candidates, which the scoring rubric alone can't express.
-- **Self-healing.** If the Critic approves fewer than 3 candidates, the orchestrator transparently retries the Recommendation Agent with `broad_mode=True` — relaxing origin and process constraints — and re-runs the Critic. One retry, then return what we have.
-
-### Deterministic scoring + LLM qualitative review
-
-Ranking is computed by a fixed rubric in [`app/tools/scorer.py`](app/tools/scorer.py):
+[`app/tools/scorer.py`](app/tools/scorer.py) calculates a candidate's `match_score`; the Critic reviews those results but does not invent scores.
 
 | Signal | Weight |
-|---|---|
-| Origin match | **+0.4** |
-| Roast level match | **+0.3** |
-| Process match | **+0.2** |
-| Flavor affinity overlap (graded match via [`flavor_hierarchy.py`](app/tools/flavor_hierarchy.py)) | **up to +0.3** |
-| Avoided flavor present | **−0.3** |
-| Final score | clamped to `[0.0, 0.95]` |
+|---|---:|
+| Origin match | +0.4 |
+| Roast-level match | +0.3 |
+| Process match | +0.2 |
+| Flavor-affinity overlap | up to +0.3 |
+| Avoided flavor | −0.3 |
+| Final score | clamped to `0.0–0.95` |
 
-Flavor matching isn't naive set intersection — it walks a flavor hierarchy so `"peach"` partially matches `"stone fruit"`. The Critic Agent reads these scores and rationales, but **does not produce them** — keeping the numbers reproducible and auditable. The LLM's job is qualitative review on top: "is this set actually good?", not "what number does this bean deserve?". This is a deliberate boundary: LLMs are asked to do the part where judgment beats arithmetic, and nothing else.
+Flavor matching uses [`flavor_hierarchy.py`](app/tools/flavor_hierarchy.py), so related terms such as `peach` and `stone fruit` receive partial credit.
 
-### Data contracts
+### Data and observability
 
-Agents pass typed Pydantic v2 objects, not strings. Defined in [`app/models/`](app/models/):
+Agents exchange Pydantic models from [`app/models/`](app/models/). PostgreSQL stores users, bean profiles, taste profiles, recommendation runs (including profile snapshots and traces), and recommendation feedback. Bean persistence is an upsert keyed by `(user_id, roaster, name)`.
 
-- **`BeanProfile`** — one logged bean. Identity, origin, process, roast, tasting notes, plus parsing metadata (`confidence`, `missing_fields`, `input_raw`, `input_type`).
-- **`TasteProfile`** — one per user, upserted. Preferred origins/processes/roast levels, flavor affinities, avoided flavors, narrative summary, history stats.
-- **`RecommendationCandidate`** — one scored candidate. Includes `match_score` and `match_rationale` from the deterministic scorer.
-- **`RecommendationResponse`** — final API payload: taste profile + ranked candidates + critic notes.
-
-Persistence: `bean_profiles` has a `UNIQUE(user_id, roaster, name)` constraint and all writes go through upserts in [`app/db/queries.py`](app/db/queries.py). Schema in [`app/db/migrations/001_init.sql`](app/db/migrations/001_init.sql). The full design doc is at [`.claude/coffee_agent_prd.md`](.claude/coffee_agent_prd.md).
+Every recommendation run records nested agent, LLM, and tool spans. The frontend polls progress while a run is active, and the Traces view shows duration, token usage, captured LLM responses, and estimated cost when token and model data are available.
 
 ## Tech stack
 
-FastAPI · asyncpg · Pydantic v2 · `google-genai` (Gemini) · BeautifulSoup · Brave Search · React + Vite frontend
+- Backend: FastAPI, asyncpg, Pydantic v2, `google-genai`, HTTPX, Beautiful Soup
+- Search: Brave Search API
+- Frontend: React 18, TypeScript, Vite, TanStack Query
+- Database: PostgreSQL
 
----
-
-## Setup & run
+## Setup and run
 
 ### Prerequisites
 
@@ -134,47 +85,49 @@ FastAPI · asyncpg · Pydantic v2 · `google-genai` (Gemini) · BeautifulSoup ·
 - Node.js 18+
 - PostgreSQL
 
-### Backend
+### Install
 
 ```bash
 pip install -e ".[dev]"
 cp .env.example .env
-```
 
-Required `.env` values:
-
-| Variable | Description |
-|---|---|
-| `DATABASE_URL` | PostgreSQL connection string |
-| `GOOGLE_API_KEY` | Gemini API key |
-| `BRAVE_API_KEY` | Brave Search API key |
-| `GEMINI_MODEL` | (optional) defaults to `gemini-3.5-flash-lite` |
-
-### Frontend
-
-```bash
 cd frontend
 npm install
 ```
 
-### Running locally
+Set these values in `.env`:
 
-Two terminals:
+| Variable | Required | Description |
+|---|---|---|
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `GOOGLE_API_KEY` | Yes for LLM-backed workflows | Gemini API key |
+| `BRAVE_API_KEY` | Yes for name/free-form input search | Brave Search API key |
+| `GEMINI_MODEL` | No | Overrides the default `gemini-3.5-flash-lite` model |
+
+### Run locally
+
+In separate terminals:
 
 ```bash
-# Terminal 1 — backend (port 8000)
+# Backend — port 8000
 uvicorn app.main:app --reload
+```
 
-# Terminal 2 — frontend (port 5173)
+```bash
+# Frontend — port 5173
 cd frontend
 npm run dev
 ```
 
-Then open [http://localhost:5173](http://localhost:5173). The frontend proxies `/api/*` to the backend, so no CORS configuration is needed in development.
+Open [http://localhost:5173](http://localhost:5173). During development, Vite proxies `/api/*` to the backend.
 
-### Tests
+### Test and build
 
 ```bash
-pytest                  # unit tests
-pytest --integration    # hits real APIs — requires .env with valid keys
+pytest
+pytest --integration  # requires valid .env credentials and reaches external APIs
+
+cd frontend
+npm run lint
+npm run build
 ```

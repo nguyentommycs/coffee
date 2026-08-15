@@ -469,7 +469,7 @@ main {
   display: flex;
   gap: 1.5rem;
   padding: 1.5rem;
-  align-items: flex-start;
+  align-items: stretch;
 }
 
 .beans-panel__left {
@@ -662,6 +662,12 @@ main {
   overflow-x: auto;
 }
 
+.bean-table-wrapper--scrollable {
+  /* Header plus five standard-height bean rows. */
+  max-height: 16.675rem;
+  overflow-y: auto;
+}
+
 .bean-table {
   width: 100%;
   border-collapse: collapse;
@@ -684,6 +690,13 @@ main {
 .bean-table th {
   font-weight: 600;
   color: #7d5840;
+}
+
+.bean-table-wrapper--scrollable .bean-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f5ede0;
 }
 
 .bean-table__row--editing input[type='text'],
